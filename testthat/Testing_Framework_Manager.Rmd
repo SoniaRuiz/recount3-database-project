@@ -1,0 +1,620 @@
+---
+title: "Test Framework documentation"
+author: 
+- name: "Guillermo Rocamora Pérez"
+  affiliation: UCL
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  bookdown::html_document2:
+    figure_caption: yes
+    code_folding: show
+    theme: paper
+    highlight: haddock
+    df_print: paged
+    toc: true
+    toc depth: 3
+    toc_float: true
+    number_sections: true
+---
+<style type="text/css">
+div.main-container {
+  max-width: 1800px !important;
+}
+<!-- pre { -->
+<!--   overflow-x: scroll -->
+<!-- } -->
+<!-- pre code { -->
+<!--   white-space: pre; -->
+<!-- } -->
+</style>
+
+```{r setup, include = FALSE}
+suppressWarnings(suppressMessages(library(DBI)))
+suppressWarnings(suppressMessages(library(testthat)))
+suppressWarnings(suppressMessages(library(GenomicRanges)))
+suppressWarnings(suppressMessages(library(tidyverse, warn.conflicts = FALSE)))
+suppressWarnings(suppressMessages(library(foreach)))
+suppressWarnings(suppressMessages(library(doParallel)))
+suppressWarnings(suppressMessages(library(RSQLite)))
+suppressWarnings(suppressMessages(library(ggplot2)))
+knitr::opts_chunk$set(echo = T, warning = F, message = F)
+
+source("helper_Files/helper_Global.R")
+source("helper_Files/helper_DatabaseTables.R")
+con <- DBI::dbConnect(RSQLite::SQLite(), database_path)
+```
+
+```{css, echo=FALSE}
+pre, code {white-space:pre !important; overflow-x:auto}
+```
+
+# Background
+
+With the goal of validating the integrity of the data contained in the different SQLite databases generated, this document aims to record the set of tests being executed. It also serves as a simple documentation on how to extend this testing framework to any SQLite database with similar structures.
+
+# Quick test run
+
+To run the tests, you need the following libraries:
+
+```{r eval = FALSE}
+library(DBI)
+library(testthat)
+library(GenomicRanges)
+library(tidyverse, warn.conflicts = FALSE)
+library(foreach)
+library(doParallel)
+```
+
+Edit the main testing parameters inside the [`helper_Files/helper_Global.R`](helper_Files/helper_Global.R) script. Load an R session and execute the `testthat::test_dir()` command with the path of the tests.
+
+```{r eval = FALSE}
+testthat::test_dir(".", reporter = ProgressReporter)
+```
+
+# Methods
+
+The testing framework chosen for this task is the [`testthat`](https://testthat.r-lib.org/) package. Its main advantages compared to other testing frameworks is that it is well tested, documented and used in many other packages. It also provides an easy implementation in a package and clear explanation if tests fails. Other valid and simpler approach would be to use the [`tinytest`](https://github.com/markvanderloo/tinytest) package, which facilitates the implementation of tests based on `.R` scripts and requires almost no dependencies.
+
+## Structure
+
+The document will be split in different sections, each one corresponding to a different test file. At the same time, each section and file will be split in different *test environments* that should have a clear objective. The structure of the tests is the following:
+
+```bash
+testthat/
+├── Testing_Framework_Manager.Rmd
+├── helper_Files
+│   ├── helper_ClusterTables.R
+│   ├── helper_DataTypes.R
+│   ├── helper_DatabaseTables.R
+│   ├── helper_GeneTable.R
+│   ├── helper_Global.R
+│   ├── helper_IntronTable.R
+│   └── helper_NovelTable.R
+├── test_ClusterTables.R
+├── test_DataTypes.R
+├── test_DatabaseTables.R
+├── test_GeneTable.R
+├── test_IntronTable.R
+└── test_NovelTable.R
+```
+
+The main idea is to have a series of test files, each one dedicated to a specific table or requirement. For example, all tests related to the `intron` table (e.g. correctly referenced to `gene` table, no duplicates) shall be found within the `test_IntronTable.R` script. Each test file will require a series of helper functions that will be sourced from the `helper_Files` folder. All test files will source the `helper_Global.R` script, as it have the common variables needed for most tests. This split is done to ensure that the different tests do not interfere with each other and can be independently executed. 
+
+## Test configuration
+
+It is possible to control which tests to execute by modifying the `helper_Global.R` script. Every test file can be individually executed or not by modifying their respective variable:
+
+* **test_DatabaseTables**
+* **test_DataTypes**
+* **test_IntronTable**
+* **test_NovelTable**
+* **test_GeneTable**
+* **test_ClusterTables**
+
+Additionally, we can also control sub-tests (most of them related to the intron table):
+
+* **test_clinvar**: whether to test if the clinvar field in intron table is correctly generated from the original files.
+* **test_conservation_CDTS**: whether to test the if conservation/CDTS fields in the intron table are correctly calculated from the original files.
+* **test_MANE**: whether to test of the MANE field in the intron table is correctly obtained from the original files.
+* **test_MaxEntScan**: whether to execute the MaxEntScan test in both intron and novel table, to test if the values are correctly generated from the original files.
+* **test_TSL**: whether to test if the TSL values in the intron table are correctly generated from the original files.
+* **test_biotypes**: whether to test if the biotypes percentage fields in the intron table are correctly extracted from the original files.
+* **test_cluster_Data**: whether to test if the data from the cluster tables is correctly extracted from the original files.
+
+For the tissue tables (*cluster tables*) we define the variable `test_clusters`, where we can input a list of specific clusters to test. This is recommended, since testing all the tissues takes a considerable amount of time. If set to `all`, every cluster table found will be tested. It is also important to set the variable `num_cores` to parallelize some steps in the cluster table tests.
+
+## Additional files and configuration
+
+To correctly execute all the tests, the framework needs to know the location of different original data. All path modifications or other variables that need to be modified will be located in the `helper_Global.R` script. The main parameters to control are:
+
+* Main information:
+    - **main_project**: name of the project being studied. It is used to access the source data for the different clusters. Currently set to: <br>``r main_project``
+    - **gtf_version**: reference transcriptome version used to access the source data for the different clusters. Currently set to: <br>``r gtf_version``
+    - **database_path**: path to the database being studied. It must be a `.sqlite` file. Currently set to: <br>``r database_path``.
+    - **projects_path**: path to the projects' location where all the source data related to each cluster can be found. Currently set to: <br>``r projects_path``
+<!-- -->
+
+<!-- -->
+* Additional data:
+    - **reference_transcriptome_path**: path to the reference transcriptome to use. Currently set to: <br>``r reference_transcriptome_path``
+    - **clinvar_path**: path to the clinvar information. Currently set to: <br>``r clinvar_path``
+    - **CNC_CDTS_CONS_gr_path**: path to the conservation/CDTS score file. Currently set to: <br>``r CNC_CDTS_CONS_gr_path``
+    - **hg_mane_transcripts_path**: path to the MANE reference transcripts. Currently set to: <br>``r hg_mane_transcripts_path``
+<!-- -->
+
+<!-- -->
+* Source data:
+    - **df_all_introns_introverse_tidy_path**: path to all the introns generated during the database generation process. Currently set to: <br>``r df_all_introns_introverse_tidy_path``
+    - **all_annotated_SR_details_length_105_raw_biotype_path**: path to the annotated introns with the biotype information. Currently set to: <br>``r all_annotated_SR_details_length_105_raw_biotype_path``
+<!-- -->
+
+<!-- -->
+* MaxEntScan score paths:
+    - **fasta_path**: path to the reference transcriptome `fasta` file. Currently set to: <br>``r fasta_path``
+    - **bedtools_path**: path to where the binary of `bedtools` can be found. It is installed in the system by default, leave blank. Currently set to: <br>``r bedtools_path``
+    - **fordownload_path**: path to the perl script to run the [MaxEntScan](http://hollywood.mit.edu/burgelab/maxent/Xmaxentscan_scoreseq.html) algorithm. Currently set to: <br>``r fordownload_path``
+<!-- -->
+
+<!-- -->
+* Additional source files: some source files need to be dynamically generated per cluster. As such, their location should be change inside the following functions:
+    - **generateClusterSplitReadsPath**: path to the original split read counts data for the cluster. Currently set to: <br>``r generateClusterSplitReadsPath("[CLUSTER]_[PROJECT]", projects_path, gtf_version, main_project)``
+    - **generateAnnotatedSRdetailsPath**: path to the original annotated intron details data for the cluster. Currently set to: <br>``r generateAnnotatedSRdetailsPath("[CLUSTER]_[PROJECT]", projects_path, gtf_version, main_project)``
+    - **generateTPMpath**: path to the original gene TPM data for the cluster. Currently set to: <br>``r generateTPMpath("[CLUSTER]_[PROJECT]", projects_path, gtf_version, main_project)``
+
+# Tests
+
+## Database tables
+
+```{r load-global, echo = FALSE}
+source("helper_Files/helper_Global.R")
+```
+
+The file to execute these tests can be found in [test_DatabaseTables.R](test_DatabaseTables.R). These tests are focused on checking the existence of the different tables, which can be classified as *main tables* or *cluster tables*:
+
+* *Main tables*: the list of main tables are: `gene`, `intron`, `mane`, `master`, and `novel`.
+* *Cluster tables*: all tables related to the different clusters found (typically, they will be tissues). There are two tables per cluster: `cluster_misspliced` and `cluster_nevermisspliced`.
+
+These tests require the following variable located in `helper_Global.R`:
+
+* **expected_main_tables**: list of the main tables required to exists. Currently set to: <br>``r expected_main_tables``
+
+The following tests are executed:
+
+* Test existence of *Main tables*:
+    -  All the *main tables* exists in the database.
+  
+* Test existence of *Cluster tables*
+    -  For every cluster, there is a `_misspliced` and `_nevermisspliced` table.
+    -  The number of `_misspliced` and `_nevermisspliced` tables are equal.
+    -  The number of `_misspliced` plus `_nevermisspliced` are equal to the number of tissue tables.
+
+Results of test:
+
+```{r test-Database-tables, echo = FALSE, comment=NA}
+test_file("test_DatabaseTables.R", reporter = SummaryReporter)
+```
+
+## Data types and foreign keys {.tabset}
+
+```{r load-global, echo = FALSE}
+```
+
+The file to execute these tests can be found in [test_DataTypes.R](test_DataTypes.R). These test check that both the *main* and *cluster tables* have the proper `data_types` and foreign keys set. To get the table information, I use the queries `PRAGMA table_info([table_name])` and `PRAGMA foreign_key_list([table_name])`.
+
+Results of test:
+
+```{r test-datatypes, echo = FALSE, comment=NA}
+test_file("test_DataTypes.R", reporter = SummaryReporter)
+```
+
+```{r load-datatypes, echo = FALSE}
+source("helper_Files/helper_Global.R")
+source("helper_Files/helper_DataTypes.R")
+source("helper_Files/helper_DatabaseTables.R")
+con <- DBI::dbConnect(RSQLite::SQLite(), database_path)
+```
+
+Each table has its own tab to describe their schema:
+
+### `Gene` table {-}
+
+This table is created from a schema ([`create_gene_table()`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/17d11f7132896e15a40e9aaf11fe7e430042f6a8/pipeline3_idb_SQL_generation_extra.R#L881)) and thus, we can require these exact same `data_types`. To modify these requirements, modify the variables `gene_expected_types`, `gene_expected_notnull` and `gene_expected_pk` in the script `helper_DataTypes.R`.
+
+```sql
+CREATE TABLE IF NOT EXISTS 'gene' (
+  id INTEGER PRIMARY KEY NOT NULL,
+  gene_id TEXT NOT NULL,
+  gene_name TEXT,
+  n_transcripts INTEGER NOT NULL,
+  gene_width INTEGER NOT NULL)
+```
+
+This table has no foreign key. The following tests are executed:
+
+* Test that `gene` table data types and foreign keys are correctly set up:
+    - Gene table `type`, `notnull` and `pk` are properly defined.
+
+### `Intron` table: {-}
+
+This table is created from a schema ([`create_master_tables()`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/17d11f7132896e15a40e9aaf11fe7e430042f6a8/pipeline3_idb_SQL_generation_extra.R#L700)) and thus, we can require these exact same `data_types`. To modify these requirements, modify the variables `intron_expected_types`, `intron_expected_notnull`, `intron_expected_pk` and `intron_expected_foreign` in the script `helper_DataTypes.R`.
+
+```sql
+CREATE TABLE IF NOT EXISTS 'intron'(
+  ref_junID NUMERIC PRIMARY KEY NOT NULL,
+  ref_coordinates TEXT NOT NULL, 
+  ref_length INTEGER NOT NULL, 
+  ref_ss5score DOUBLE NOT NULL, 
+  ref_ss3score DOUBLE NOT NULL, 
+  ref_cons5score DOUBLE NOT NULL,
+  ref_cons3score DOUBLE NOT NULL,
+  ref_CDTS5score DOUBLE NOT NULL,
+  ref_CDTS3score DOUBLE NOT NULL,
+  u2_intron BOOL,
+  u12_intron BOOL,
+  clinvar TEXT NOT NULL, 
+  MANE BOOL NOT NULL,
+  TSL NUMERIC NOT NULL,
+  lncRNA INTEGER NOT NULL,
+  protein_coding INTEGER NOT NULL,
+  misspliced BOOL NOT NULL,
+  gene_id INTEGER NOT NULL,
+  FOREIGN KEY (gene_id) REFERENCES 'gene'(id))
+```
+
+It has a foreign key to the `gene` table. The following tests are executed:
+
+* Test that intron table data types and foreign keys are correctly set up:
+    - Gene table `type`, `notnull` and `pk` are properly defined.
+    - The foreign keys from intron table are properly set.
+
+### `Novel` table: {-}
+
+This table is created from a schema ([`create_master_tables()`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/17d11f7132896e15a40e9aaf11fe7e430042f6a8/pipeline3_idb_SQL_generation_extra.R#L840)) and thus, we can require these exact same `data_types`. To modify these requirements, modify the variables `novel_expected_types`, `novel_expected_notnull`, `novel_expected_pk` and `novel_expected_foreign` in the script `helper_DataTypes.R`.
+
+```sql
+CREATE TABLE IF NOT EXISTS 'novel'
+  (novel_junID NUMERIC NOT NULL,
+  ref_junID NUMERIC NOT NULL,
+  novel_coordinates TEXT NOT NULL, 
+  novel_ss5score DOUBLE NOT NULL, 
+  novel_ss3score DOUBLE NOT NULL,
+  novel_type TEXT NOT NULL, 
+  distance INTEGER NOT NULL,
+  PRIMARY KEY (ref_junID, novel_junID),
+  FOREIGN KEY (ref_junID) REFERENCES 'intron'(ref_junID))
+```
+
+It has a foreign key to the `intron` table. The following tests are executed:
+
+* Test that novel table data types and foreign keys are correctly set up:
+    -  Novel table `type`, `notnull` and `pk` are properly defined.
+    -  The foreign keys from novel table are properly set.
+
+### `MANE` table: {-}
+
+This table is not created from a schema ([`create_mane_table()`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/17d11f7132896e15a40e9aaf11fe7e430042f6a8/pipeline3_idb_SQL_generation_extra.R#L222)) and thus, we can only infer their `data_types`. From the db, the information is the following:
+
+```r
+# A tibble: 8 × 6
+    cid name            type    notnull dflt_value    pk
+  <int> <chr>           <chr>     <int> <lgl>      <int>
+1     0 seqnames        TEXT          0 NA             0
+2     1 start           INTEGER       0 NA             0
+3     2 end             INTEGER       0 NA             0
+4     3 strand          TEXT          0 NA             0
+5     4 type            TEXT          0 NA             0
+6     5 gene_name       TEXT          0 NA             0
+7     6 transcript_id   TEXT          0 NA             0
+8     7 transcript_name TEXT          0 NA             0
+```
+
+To modify these requirements, modify the variables `mane_expected_types`, `mane_expected_notnull` and `mane_expected_pk` in the script `helper_DataTypes.R`. This table has no foreign key. 
+
+The following tests are executed:
+
+* Test that MANE table data types and foreign keys are correctly set up:
+    - Mane table `type`, `notnull` and `pk` are properly defined.
+
+### `Master` table: {-}
+
+This table is not created from a schema ([`create_metadata_table()`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/17d11f7132896e15a40e9aaf11fe7e430042f6a8/pipeline3_idb_SQL_generation_extra.R#L99)) and thus, we can only infer their `data_types`. From the db, the information is the following:
+
+```r
+# A tibble: 13 × 6
+     cid name              type    notnull dflt_value    pk
+   <int> <chr>             <chr>     <int> <lgl>      <int>
+ 1     0 age               TEXT          0 NA             0
+ 2     1 rin               TEXT          0 NA             0
+ 3     2 gender            TEXT          0 NA             0
+ 4     3 tissue            TEXT          0 NA             0
+ 5     4 cluster           TEXT          0 NA             0
+ 6     5 cluster_tidy      TEXT          0 NA             0
+ 7     6 smnabtcht         TEXT          0 NA             0
+ 8     7 sample_id         INTEGER       0 NA             0
+ 9     8 smafrze           TEXT          0 NA             0
+10     9 avg_read_length   REAL          0 NA             0
+11    10 mapped_read_count INTEGER       0 NA             0
+12    11 SRA_project_tidy  TEXT          0 NA             0
+13    12 SRA_project       TEXT          0 NA             0
+```
+
+To modify these requirements, modify the variables `master_expected_types`, `master_expected_notnull` and `master_expected_pk` in the script `helper_DataTypes.R`. This table has no foreign key. 
+
+The following tests are executed:
+
+* Test that master table data types and foreign keys are correctly set up:
+    - Master table `type`, `notnull` and `pk` are properly defined.
+
+### `_misspliced` table: {-}
+
+This table is created from a schema ([`create_cluster_table`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/main/pipeline3_idb_SQL_generation_extra.R#L942)) and thus, we can require these exact same `data_types`. To modify these requirements, modify the variables `misspliced_expected_types`, `misspliced_expected_notnull`, `misspliced_expected_pk`, `misspliced_expected_foreign_gene_id`, `misspliced_expected_foreign_ref_junID` and `misspliced_expected_foreign_novel_junID` in the script `helper_DataTypes.R`.
+
+```sql
+CREATE TABLE IF NOT EXISTS 'cluster_db_misspliced")'(
+  ref_junID INTEGER NOT NULL,
+  novel_junID INTEGER NOT NULL,
+  ref_n_individuals INTEGER NOT NULL,
+  ref_sum_counts INTEGER NOT NULL,
+  ref_type TEXT NOT NULL, 
+  novel_n_individuals INTEGER NOT NULL,
+  novel_sum_counts INTEGER NOT NULL, 
+  MSR_D DOUBLE NOT NULL, 
+  MSR_A DOUBLE NOT NULL, 
+  gene_tpm DOUBLE,
+  gene_id INTEGER NOT NULL,
+  FOREIGN KEY (ref_junID, novel_junID) REFERENCES novel (ref_junID, novel_junID),
+  FOREIGN KEY (gene_id) REFERENCES 'gene'(id))
+```
+
+These tables have three foreign keys, two to `novel` table and one to `gene` table. These tests are executed for all *misspliced cluster tables* :
+
+* Test that cluster mis-spliced tables data types and foreign keys are correctly set up:
+    - *Misspliced cluster* table `type`, `notnull` and `pk` are properly defined.
+    - The foreign keys from *misspliced cluster* table are properly set.
+
+### `_nevermisspliced` table: {-}
+
+This table is created from a schema ([`create_cluster_table`](https://github.com/SoniaRuiz/splicing-project-recount3/blob/main/pipeline3_idb_SQL_generation_extra.R#L1541)) and thus, we can require these exact same `data_types`. To modify these requirements, modify the variables `never_expected_types`, `never_expected_notnull`, `never_expected_pk`, `never_expected_foreign_gene_id`, `never_expected_foreign_ref_junID` and `never_expected_foreign_novel_junID` in the script `helper_DataTypes.R`.
+
+```sql
+CREATE TABLE IF NOT EXISTS 'cluster_db_nevermisspliced")'(
+  ref_junID INTEGER NOT NULL,
+  ref_n_individuals INTEGER NOT NULL,
+  ref_sum_counts INTEGER NOT NULL,
+  MSR_D DOUBLE NOT NULL, 
+  MSR_A DOUBLE NOT NULL, 
+  ref_type TEXT NOT NULL, 
+  gene_tpm DOUBLE,
+  gene_id INTEGER NOT NULL,
+  FOREIGN KEY (ref_junID) REFERENCES intron (ref_junID),
+  FOREIGN KEY (gene_id) REFERENCES 'gene'(id))
+```
+
+These tables have two foreign keys, one to `novel` table and one to `gene` table. These tests are executed for all *nevermisspliced cluster tables* :
+
+* Test that cluster never mis-spliced tables data types and foreign keys are correctly set up:
+    - *Nevermisspliced cluster* table `type`, `notnull` and `pk` are properly defined.
+    - The foreign keys from *nevermisspliced cluster* table are properly set.
+    
+## `Intron` table
+
+```{r load-global, echo = FALSE}
+```
+
+The tests found in file [test_IntronTable.R](test_IntronTable.R) ensure that the `intron` table is correctly generated when compared to the other tables. It also tests that the data contained in the table is consistent with the calculated values. The supplementary files required to execute these test are the following:
+
+* **Clinvar data**: found in `clinvar_path` variable.
+* **Conservation and CDTS data**: found in `CNC_CDTS_CONS_gr_path` variable.
+* **Reference MANE transcripts**: found in `hg_mane_transcripts_path` variable.
+* **Reference Transcriptome v105**: found in `reference_transcriptome_path` variable.
+* **All introns from samples tidy**: found in `df_all_introns_introverse_tidy_path` variable. It contains the information for all introns found across every sample. It is required because it includes the information about the transcripts.
+* **All biotype information**: found in `all_annotated_SR_details_length_105_raw_biotype_path` variable. Contains the percentage of the different biotypes for the different transcripts.
+
+We also defined the valid parameters for some of the fields in  `helper_Global.R`:
+
+* **Valid strand values**: list of valid strands for the introns. Currently set to: <br>``r valid_intron_strands``
+* **Valid seqnames values**: list of valid seqnames for the introns. Currently set to: <br>``r valid_intron_seqnames``
+* **Valid clinvar values**: list of valid clinvar options for the introns. Currently set to: <br>``r valid_intron_clinvar``
+* **Valid TSL values**: list of valid TSL values for the introns. Currently set to: <br>``r valid_intron_TSL``
+
+The following tests are executed:
+
+* Test intron IDs and their reference in other tables:
+    - All introns categorized as `misspliced` are exactly the same introns that appear as `ref_junID` in `novel` table.
+    - No intron categorized as `never mis-spliced` is found as `ref_junID` in `novel` table. 
+    - No duplicates found in `ref_junID`.
+
+* Test reference between intron and gene table:
+    - All `gene_id` are properly referenced to a row in the gene table.
+    
+* Test that different fields have consistent values:
+    - No intron is classified as `u2` and `u12` at the same time.
+    - All `clinvar` structure is either "-" or "[acceptor/donor]-[number]bp".
+    - All `MANE` values are either 0 or 1 (boolean).
+    - All `TSL` values are between the valid values (1, 2, 3, 4, 5 and 10).
+    - All `lncRNA` values, `protein_coding` values and their sum are between 0 and 100%.
+    - All `misspliced` values are either 0 or 1 (boolean).
+    
+* Test `ref_coordinates` field:
+    - No duplicates found in `ref_coordinates`.
+    - No `ref_coordinates` value is found in `novel_coordinates`.
+    - No `*` strand found in `ref_coordinates`.
+    - All `seqnames` in `ref_coordinates` are within the 1-22, X and Y chromosomes.
+    - Intron length is consistent with the coordinates. We use `GRanges` to calculate the width (or length) of the intron.
+    
+* Test that no NAs are found in where they are not allowed:
+    - No single value should be NA or equal to "NA".
+    
+* Test that MaxEntScan scores are correctly calculated:
+    - All `MaxEntScan` scores calculated are consistent with the ones found in the `intron` table.
+    
+* Test that the Clinvar data is correctly calculated:
+    - All `clinvar` values calculated are consistent with the ones found in the `intron` table.
+    
+* Test that the CDTS and conservation scores are correctly obtained:
+    - All `CDTS` values calculated are consistent with the ones found in the `intron` table.
+    - **DOES NOT PASS!** All `conservation` values calculated are consistent with the ones found in the `intron` table.
+    
+* Test that the TSL values are correctly obtained:
+    - All `TSL` values calculated are consistent with the ones found in the `intron` table.
+    
+* Test that the biotypes percentage values are corrently obtained:
+    - All `lncRNA` percentage values calculated are consistent with the ones found in the `intron` table.
+    - All `protein_coding` percentage values calculated are consistent with the ones found in the `intron` table.
+
+* Test that the MANE information is properly calculated:
+    - All `MANE` classification calculated is consistent with the ones found in the `intron` table.
+    
+* Test that the misspliced information is properly calculated:
+    - All mis-spliced annotated introns found in the `intron` table are consistent with the mis-spliced in the cluster tables.
+    - All never mis-spliced annotated introns found in the `intron` table are consistent with the never mis-spliced in the cluster tables.
+    
+Results of test:
+
+```{r test-intron-table, echo = FALSE, cache = TRUE, comment=NA}
+test_file("test_IntronTable.R", reporter = SummaryReporter)
+```
+
+## `Novel` table
+
+```{r load-global, echo = FALSE}
+```
+
+The tests found in file [test_NovelTable.R](test_NovelTable.R) ensure that the `novel` table is correctly generated when compared to the other tables. It also tests that the data contained in the table is consistent with the calculated values.
+
+We need to define some valid parameters in `helper_Global.R`:
+
+* **Valid strand values**: list of valid strands for the novel junctions. Currently set to: <br>``r valid_novel_strands``
+* **Valid seqnames values**: list of valid seqnames for the novel junctions. Currently set to: <br>``r valid_novel_seqnames``
+* **Valid novel types**: list of valid clinvar options for the novel junctions. Currently set to: <br>``r valid_novel_types``
+
+The following tests are executed:
+
+* Test junction IDs and their reference in other tables:
+    - All `ref_junID` from the novel table are found in the `ref_junID` from intron table.
+    - All `ref_junID` from the novel table are found in the mis-spliced `ref_junID` from intron table. 
+    - No duplicates found in `novel_junID`.
+
+* Test that different fields have consistent values:
+    - All `novel_types` are found in the valid types.
+    
+* Test novel_coordinates field:
+    - No duplicates found in `novel_coordinates`.
+    - No `novel_coordinates` value is found in `ref_coordinates`.
+    - No `*` strand found in `novel_coordinates`.
+    - All `seqnames` in `novel_coordinates` are within the 1-22, X and Y chromosomes.
+
+* Test that no NAs are found in where they are not allowed:
+    - No single value should be NA or equal to "NA".
+    
+* Test that MaxEntScan scores are correctly calculated:
+    - All `MaxEntScan` scores calculated are consistent with the ones found in the `novel` table.
+    
+* Test correctly calculated distances. The distances are calculated from the `novel` and `intron` table, **not** from the annotated intron files of each project:
+    - The strands of the reference introns in `novel` table and `intron` table are the same.
+    - The `novel_type` is consistent with the fixed starting and end position of the novel junction and reference intron.
+    - The distances are properly calculated.
+
+* Test that no NAs are found in where they are not allowed:
+    - No single value should be NA or equal to "NA".
+
+Results of test:
+
+```{r test-novel-table, echo = FALSE, cache = TRUE, comment=NA}
+test_file("test_NovelTable.R", reporter = SummaryReporter)
+```
+
+## `Gene` table
+
+```{r load-global, echo = FALSE}
+```
+
+The tests found in file [test_GeneTable.R](test_GeneTable.R) ensure that the `GENE` table is correctly generated when compared to the other tables. It also tests that the data contained in the table is consistent with the calculated values. Several supplementary files are required in order to execute these tests:
+
+* **Reference Transcriptome v105**: found in `reference_transcriptome_path` variable.
+
+The following tests are executed:
+
+* Test that genes exists in the reference transcriptome:
+    - All `gene_id` in the table are found in the reference transcriptome.
+    - All gene names are found in the reference transcriptome.
+    - All gene names and IDs are consistent with the reference transcriptome.
+
+* Test that all transcripts are correct:
+    - All gene transcripts are consistent with the reference transcriptome.
+  
+* Test that gene widths are correct:
+    - All gene widths are consistent with the reference transcriptome.
+
+* Test that no NAs are found in where they are not allowed:
+    - No single value should be NA or equal to "NA" (only `gene_name` is allowed).
+    
+Results of test:
+
+```{r test-gene-table, echo = FALSE, cache = TRUE, comment=NA}
+test_file("test_GeneTable.R", reporter = SummaryReporter)
+```
+
+## `Cluster` tables
+
+```{r load-global, echo = FALSE}
+```
+
+The tests found in file [test_ClusterTables.R](test_ClusterTables.R) ensure that the `cluster` tables are correctly generated when compared to the other tables. It also tests that the data contained in the tables is consistent with the calculated values. Since we can have an arbitraty number of clusters to study, it is important to select to which cluster apply the tests. We can control its behaviour with the following parameter:
+
+* **test_clusters**: list of clusters to study. If set to `all`, every cluster found in the tables will be studied.
+
+As an important note, these tests assumes that for every cluster we find two different tables (i.e. `_misspliced` and `_nevermisspliced`). It is important to ensure this behaviour by previously running the [Database tables] test before.
+
+For each project, we tests require access to three different files that are dynamically generated using the following functions:
+
+* **generateClusterSplitReadsPath**: path to the original split read counts data for the cluster. Currently set to: <br>``r generateClusterSplitReadsPath("[CLUSTER]_[PROJECT]", projects_path, gtf_version, main_project)``
+* **generateAnnotatedSRdetailsPath**: path to the original annotated intron details data for the cluster. Currently set to: <br>``r generateAnnotatedSRdetailsPath("[CLUSTER]_[PROJECT]", projects_path, gtf_version, main_project)``
+* **generateTPMpath**: path to the original gene TPM data for the cluster. Currently set to: <br>``r generateTPMpath("[CLUSTER]_[PROJECT]", projects_path, gtf_version, main_project)``
+
+The following tests are executed:
+
+* Test junction IDs and their reference with intron and novel tables:
+    - All reference introns are found in the intron table.
+    - All novel junctions are found in the novel table.
+    - All novel_junID and ref_junID pairs are also found in the novel table.
+    
+* Test reference between cluster and gene table:
+    - All `gene_id` in both cluster tables are properly referenced to a row in the gene table.
+    
+* Test that all reads are properly extracted:
+    - All `novel_coordinates` and `ref_coordinates` are found in the split reads.
+    - All `novel_sum_counts` and `novel_n_individuals` are properly calculated.
+    - All misspliced `ref_sum_counts` and `ref_n_individuals` are properly calculated.
+    - All never misspliced `ref_sum_counts` and `ref_n_individuals` are properly calculated.
+    
+* Test that all junctions and introns are properly obtained from annotated_SR_details:
+    - All novel junctions must be novel acceptor and novel donor in annotated SR details
+    - All misspliced annotated introns must be "annotated" in annotated SR details
+    - All nevermisspliced annotated introns must be "annotated" in annotated SR details
+    
+* Test that never misspliced annotated introns are trully never misspliced:
+    - All never misspliced introns from the cluster are not found as misspliced when calculating the distances again.
+    
+* Test that TPM values are properly calculated:
+    - All `gene_tpm` values should match the obtained from the tpm results.
+    
+* Test that Mis-Splicing Ratio is properly calculated:
+    - All mis-spliced introns MSR values calculated are consistent with the read counts values in the tables.
+    - All MSR are within valid values. This includes $0<MSR_{\text{mis-spliced}}<100$ and $MSR_{\text{never mis-spliced}}=0$.
+
+* Test that reference intron type is consistent with MSR:
+    - All reference intron type (i.e. donor, acceptor, both or never) are consistent with the MSR.
+    
+* Test that no NAs are found in where they are not allowed:
+    - No single value should be NA or equal to "NA" (only `gene_tpm` is allowed).
+
+* Test that the set of introns in intron table and the set in the cluster tables are the same. This test scans all cluster tables, independently of the ones selected in `test_clusters`.
+    - All mis-spliced introns found in the cluster tables match the introns found in intron table as misspliced.
+    - All never mis-spliced introns found in the cluster tables match the introns found in intron table as never mis-spliced.
+
+Results of test:
+
+```{r test-cluster-table, echo = FALSE, cache = TRUE, comment=NA}
+test_file("test_ClusterTables.R", reporter = SummaryReporter)
+```
