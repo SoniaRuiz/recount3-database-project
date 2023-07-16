@@ -14,12 +14,12 @@ library(DBI)
 
 ## Array with the IDs of the project to database as provided by recount3
 ## recount3 projects ID be checked here: https://jhubiostatistics.shinyapps.io/recount3-study-explorer/
-recount3_project_IDs <- c("SRP100948")
+recount3_project_IDs <- c("SRP058181")#,"SRP100948")
 ## This distinction is made for recount3 project that, albeit are separated in multiple independent projects (such as GTEx) in recount3,
 ## they belong to the same main project
 ## For instance, GTEx is stored in recount3 in multiple independent projects ID (e.g. BRAIN, SKIN, BLOOD, etc), but all of them
 ## belong to GTEx
-project_name <- c("SRP100948")
+project_name <- c("SRP058181")#,"SRP100948")
 data_source <- "data_sources/sra"
 
 

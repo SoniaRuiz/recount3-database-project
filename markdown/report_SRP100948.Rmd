@@ -272,6 +272,26 @@ Wilcoxon test:
 ```
 <br><br>
 
+### GO ENRICHMENT
+
+GO Enrichment of the genes containing introns with higher levels of MSR_A in AD samples compared to control samples.
+
+- Total common introns (n= 148,413). 
+- Background genes (n=15,617). These are all genes parenting all (n= 148,413) introns.
+- Introns with increasing levels of MSR_A in AD vs control (n=9,292). Genes parenting those introns n=6,025 (these are the genes evaluated on the GO enrichment analysis).
+- Introns with decreasing levels of MSR_A in AD vs control (n=6,645).
+- Introns with the same value n=132,476. These are majoritarily MSR_A=0.
+
+
+```{r go_enrichment}
+
+
+file_path <- paste0(figures_path, '/go_enrichment_msra.png') 
+knitr::include_graphics(file_path)
+
+```
+
+
 # Conclusions
 
 There is a significant increase in mis-splicing activity in samples diagnosed with Alzheimer's disease (AD) as compared to neurologically normal samples.

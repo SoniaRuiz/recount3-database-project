@@ -478,6 +478,7 @@ tidy_sample_cluster_data <- function(recount3.project.IDs,
       ## Get clusters
       ################
       
+      ## Only consider samples that passed the subsampling process by RIN score performed above
       cluster_samples <- metadata_tidy_filter %>% 
         filter(cluster == cluster_id) %>%
         distinct(external_id) %>% 
@@ -494,9 +495,11 @@ tidy_sample_cluster_data <- function(recount3.project.IDs,
       
       print(paste0(Sys.time(), " - filtering split read counts matrix for the current matrix."))
       
+      ## Only samples passing the filtering criteria
       local_counts <- counts[,(colnames(counts) %in% cluster_samples)]
       local_counts %>% nrow()
       
+      ## Only split reads passing the filtering criteria
       local_counts <- local_counts[(rownames(local_counts) %in% 
                                       all_split_reads_details_w_symbol_reduced_keep_gr$junID),]
       local_counts %>% nrow()
@@ -506,9 +509,9 @@ tidy_sample_cluster_data <- function(recount3.project.IDs,
       local_counts %>% nrow()
       local_counts %>% head()
       
-      
-      
       local_counts <- local_counts %>% as.matrix()
+      
+      ## At least two supporting reads
       local_counts <- local_counts[rowSums(local_counts) > 1, ]
       local_counts %>% nrow()
       
