@@ -1,10 +1,11 @@
 ---
-title: "Assesing differencies in the levels of MSR between AD and control samples"
+title: "Assesing differencies in the mis-splicing activity between the annotated introns from AD as compared to control samples"
 author: 
 - name: "Sonia Garcia-Ruiz"
   affiliation: 
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: 
+  pdf_document: default
   bookdown::html_document2:
     figure_caption: yes
     code_folding: hide
@@ -34,13 +35,13 @@ theme_rhr <- theme_set(
         axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
         axis.title.y = element_text(vjust = 0.6),
         panel.spacing = unit(0.1, "lines"))
-)  
-
-  
+) 
 
 project_path <- "/home/sruiz/PROJECTS/recount3-database-project/"
-gtf_version <- 105
-project_name <- "SRP100948"
+gtf_version <- 110
+supportive_reads <-1
+project_id <- "SRP100948"
+project_name <- paste0(project_id, "_", supportive_reads, "read")
 
 database_folder <- paste0(project_path, "/database/", project_name, "/", gtf_version, "/")
 results_folder <- paste0(project_path, "/results/", project_name, "/", gtf_version, "/")
@@ -49,106 +50,64 @@ results_path <- paste0(results_folder, "/_paper/results/")
 figures_path <- paste0(results_folder, "/_paper/figures/")
 
 
-```
 
-> Is there more mis-splicing activity in samples diagnosed with Alzheimer's disease as compared to neurologically normal samples?
-<br><br>
+```
 
 # Background
 
-Evaluate whether there are significant differences in the levels of MSR at the donor and acceptor splice sites of the common annotated introns between post-mortem samples diagnosed with Alzheimer's disease (AD) and neurologically normal (control) samples.
+To provide the reader with additional evidence supporting the patterns of splicing noise reported beyond the GTEx v8 dataset, we replicated the analyses include in this manuscript using an independent dataset of short-read RNA-sequencing. We analysed samples from fusiform gyrus of Alzheimer's (AD) and neurologically normal (control) post-mortem samples published on ["Diverse Brain Myeloid Expression Profiles Reveal Distinct Microglial Activation States and Aspects of Alzheimer's Disease Not Evident in Mouse Models"](https://doi.org/10.1016/j.celrep.2017.12.066). RNA was extracted from frozen fusiform gyrus tissue blocks of autopsy-confirmed Alzheimer's cases and neurologically normal age-matched controls. Standard polyA-selected Illumina RNA-seq analysis was performed. Only samples with RNA integrity scores of at least 5 as well as post-mortem intervals lower than 5 hr were selected.
 
-# Data {.tabset}
+With this analysis, we aimed to evaluate whether there are any significant differences in the levels of MSR at the donor and acceptor splice sites of the annotated introns overlapping post-mortem samples diagnosed with Alzheimer's disease (AD) and neurologically normal (control) samples.
 
-- RNA-sequencing data downloaded from recount3 (ID = "SRP100948"). This dataset was originated from https://pubmed.ncbi.nlm.nih.gov/29346778/.
-
-- Recount3 description: *"117 samples in total. RNA was purified from fusiform gyrus tissue sections of autopsy-confirmed Alzheimer's cases and neurologically normal age-matched controls. The "SAM.ID" sample characteristic is a sample identifier internal to Genentech. The ID of this project in Genentech''s ExpressionPlot database is PRJ0007261 Overall design: RNA from fusiform gyrus of Alzheimer''s or Neurologically Normal post-mortem tissue."*
 
 # Methods {.tabset}
 
-- I separated samples in "control" and "AD" groups.
+RNA-sequencing junction data corresponding to 98 samples was downloaded from recount3 (ID = "SRP100948") (Gene Expression Omnibus: [GSE89482](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE89482)).
 
-- RIN-match both sample groups to meet by RIN similarity (max RIN difference allowed 0.1). This reduced the samples to **21 AD samples** and **21 control samples**.
+We classified these 98 samples by diagnosis in the "control" and "AD" groups, respectively. It is widely known that the presence of split reads within a sample can be affected by the sequencing depth of the sample. To reduce potential biases in any downstream comparison between the number of novel split reads found in AD versus control samples, we subsampled both sets of samples to match them by mapped read depth similarity, which reduced both datasets to 24 samples in each group (see Figure 2.1 below), and built a Splicing database following the methods indicated in this manuscript.  
 
-- Each novel junction and annotated intron considered must have a minimum of 2 supportive reads.
-
-- I built the database. Samples were clustered by AD and control. Junction pairing was separately done within each sample cluster.
-
-- To compare the MSR of the introns between AD and control samples, I obtained the annotated introns overlapping the two groups.
-
-- Introns from AD group presented slightly higher coverage. Hence, I subsampled the overlapping annotated introns between the two AD and control categories to meet by read coverage. Maximum difference of log10 mean read coverage allowed = 0.0005. This reduced the distribution to **187,543 overlapping common introns**. These introns were homogeneous in terms of their mean read coverage.
-
-- I used a one-tailed Wilcoxon test to evaluate differences in the distribution of MSR_D and MSR_A values between the common, subsampled introns from the AD and control group.
-
-
-
-<!-- # Supplementary code {.tabset} -->
-
-<!-- Following section includes any intermediary code used in this `.Rmd`. -->
-
-<!-- ## Example supplementary code section -->
-
-<!-- ```{r example-supp-code, eval = F} -->
-
-<!-- source(here::here("", "")) -->
-
-<!-- ``` -->
-
-# Results 
-
-Results from the comparison between the MSR values between AD and control showed that the common introns from the AD group presented significantly higher values of MSR at both their donor and acceptor splice sites compared to the neurologically normal samples.
-
-## Example results section {.tabset}
-
-### Database metadata
-
-Metadata of the AD and control samples after matching them by similar RIN score.
-
-This reduced the samples to **21 AD samples** and **21 control samples**.
-
-```{r metadata}
+```{r metadata, fig.cap = "Metadata of the samples included in this analysis after downsampling them to match by read depth similarity.", echo=F}
 
 file_path <- paste0(figures_path, '/metadata.png')
 knitr::include_graphics(file_path)
 
 ```
 
-### Read coverage subsample
+To compare the level of mis-splicing activity of the annotated introns found across the 24 samples clustered within each sample group, we made use of their MSR values. To avoid potential biases due to differences in the expression levels of the introns studied in each group, we only considered those introns overlapping both groups and that displayed similar expression levels. Expression levels were measured by obtaining the cumulative number of split reads supporting the presence of each annotated intron across the samples of each group. The maximum difference of log10 mean expression levels allowed corresponded to 0.0005. This subsampling process reduced both distributions of introns to **144,479** in each sample group (see Figure 2.2 below).
 
-Mean read coverage comparison before and after the subsampling process to match introns in AD and control samples by mean read coverage.
-
-This subsampling process reduced the two distributions of annotated introns to **187,543 overlapping introns** between the AD and the control groups. These n=187,543 introns were homogeneous in terms of their mean read coverage.
-
-```{r read_coverage_image}
-
+```{r readCoverageImage, fig.cap="Mean expression level comparison of the common introns in AD and control samples before subsampling them to match by mean expression similarity.", echo=F}
 
 file_path <- paste0(figures_path, '/subsampling.png') 
 knitr::include_graphics(file_path)
 
 ```
 
-### Unique number of novel junctions
+In all downstream statistical tests performed, we used one-tailed tests to evaluate differences in the distribution of MSR_D and MSR_A values between the common, subsampled introns from the AD and control group.
 
-Only using common, subsampled annotated introns between AD and control samples.
 
-AD samples showed a higher number of unique novel junctions compared to control samples.
+# Results 
 
-```{r unique_novel_junctions}
+Results from the comparison between the MSR values of the matched annotated introns between AD and control groups, showed that the common introns in the AD group presented significantly higher values of MSR at both their donor and acceptor splice sites compared to those matched introns across neurologically normal samples.
 
+
+## Unique number of novel junctions
+
+We found a higher number of unique novel junctions in AD samples as compared to control samples.
+
+```{r uniqueNovelJunctions, fig.cap="Unique novel donor and novel acceptor junctions in AD versus control samples.", echo=F}
 
 file_path <- paste0(figures_path, '/unique_novel_junctions.png') 
 knitr::include_graphics(file_path)
 
 ```
 
-### Cummulative number of novel reads
+\newpage
 
-Only using common, subsampled annotated introns between AD and control samples.
+## Cummulative number of novel reads
 
-AD samples showed a higher number of novel reads compared to control samples.
+We found that novel junctions in AD samples presented a higher cummulative number of supporting split reads as compared to control samples.
 
-```{r novel_read_counts}
-
+```{r novelReadCounts, fig.cap="Cummulative number of supporting split reads that the novel donor and novel acceptor junctions present across the samples of the AD and control group, respectively.", echo=F}
 
 file_path <- paste0(figures_path, '/read_counts.png') 
 knitr::include_graphics(file_path)
@@ -156,13 +115,14 @@ knitr::include_graphics(file_path)
 ```
 
 
-### Distances
+\newpage
+## Distances
 
-Distances up to 30bp. Only using common, subsampled annotated introns between AD and control samples.
+We found that the annotated introns in AD samples presented a higher variety of novel junctions (as indicated by the y-axis) located in close proximity to annotated splice sites (represented by the x-axis position 0).
 
-Annotated introns from AD samples showed a higher variety of novel junctions in close proximity to annotated splice sites compared to control samples.
+For interpretability purposes, only mis-splicing activity up to 30bp from annotated splice sites have been represented.
 
-```{r distances}
+```{r distances, echo=F}
 
 
 file_path <- paste0(figures_path, '/distances.png') 
@@ -170,13 +130,14 @@ knitr::include_graphics(file_path)
 
 ```
 
-### Modulo 3
+\newpage
+## Modulo 3
 
-Modulo3 of the distances. Only using novel junctions arising from the common subsampled annotated introns (n=187,543). In addition, only novel junctions from MANE transcripts within 100bp from annotated splice sites were considered.
+Modulo3 of the distances. For this analysis, we only considered novel junctions from MANE transcripts and located within 100bp from annotated splice sites.
 
-Novel junctions from AD samples showed a small bias towards distances **not divisible by 3**.
+Results from this analysis indicated that, when compared to control samples, novel junctions in AD samples are more frequently located within distances **not divisible by 3**.
 
-```{r modulo3}
+```{r modulo3, echo=F}
 
 
 file_path <- paste0(figures_path, '/modulo.png') 
@@ -184,135 +145,216 @@ knitr::include_graphics(file_path)
 
 ```
 
-### MSR_D differences
+\newpage
+## MSR differences {.tabset}
 
-Common, subsampled introns: 
+### MSR Donor
 
-```{r msrd_diff}
+Considering the 144,479 annotated introns clustered within the AD group, below is the summary of their MSR at their donor splice site (i.e. the frequency of mis-splicing at their 5'ss):
+
+```{r msrd_ad, echo=F}
 
   common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
-  print(paste0(common_introns_subsample$ref_junID %>% unique() %>% length()))
+  common_junID <- common_introns_subsample %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == 2) %>%
+    pull(ref_junID)
+  common_introns_subsample_tidy <- common_introns_subsample %>%
+    filter(ref_junID %in% common_junID)
+    
+  common_introns_subsample_tidy_MSRD <- common_introns_subsample_tidy %>%
+    dplyr::select(ref_junID, MSR_D, sample_type) %>%
+    spread(sample_type, value = MSR_D)
+  
+  
+  common_introns_subsample_tidy_MSRD %>% pull(AD) %>% summary %>% print()
+
 
 ```
 
 
-Summary of the MSR_D in common introns from AD samples:
-```{r msrd_ad}
+Considering the same set of 144,479 annotated introns clustered within the control group, below is the summary of their MSR at their donor splice site:
 
-  common_introns_subsample %>% filter(sample_type == "AD") %>% pull(MSR_D) %>% summary %>% print()
+```{r msrd_control, echo=F}
 
-```
-
-
-Summary of the MSR_D in common introns from control samples:
-```{r msrd_control}
-
-  common_introns_subsample %>% filter(sample_type == "control") %>% pull(MSR_D) %>% summary
+  common_introns_subsample_tidy_MSRD %>% pull(control) %>% summary
 
 ```
 
 
-Wilcoxon test:
+Introns from AD samples seem to present higher levels of mis-splicing activity at their donor splice site. To formally test this result, we performed a one-tailed paired Wilcoxon test. The alternative hypothesis tested corresponded to:
 
-- H1: the common annotated introns from AD samples have higher MSR_D values than in control samples):
-- One-tailed and paired test
+- **H1: the common annotated introns in AD samples have higher MSR at their donor splice sites than in control samples**
 
+```{r msrd_wilxcoxon, echo=F}
 
-```{r msrd_wilxcoxon}
-
-  wilcox.test(x = common_introns_subsample %>% filter(sample_type == "AD") %>% pull(MSR_D),
-            y = common_introns_subsample %>% filter(sample_type == "control") %>% pull(MSR_D),
+  wilcox.test(x = common_introns_subsample_tidy_MSRD %>% pull(AD),
+            y = common_introns_subsample_tidy_MSRD %>% pull(control),
             alternative = "greater",
             paired = T,
             correct = T)
 
 ```
-### MSR_A differences
 
-Common, subsampled introns: 
+When we look at the effect size between the sample type (i.e. "AD" or "Control") and the MSR_Donor measure:
 
-```{r msra_diff}
+```{r msrd_effsize, echo=F}
 
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
-  print(paste0(common_introns_subsample$ref_junID %>% unique() %>% length()))
+  rstatix::wilcox_effsize(data = common_introns_subsample_tidy_MSRD %>% 
+                            gather(key = ref_junID, value = type) %>%
+                            dplyr::rename(type = ref_junID, MSR_D = type) %>%
+                            mutate(type = type %>% as.factor()),
+                          formula = MSR_D ~ type,
+                          paired = T)
+
+```
+
+Results from this one-tailed paired Wilcoxon test indicate that the null hypothesis is rejected and, therefore, the alternative hypothesis can be accepted.
+
+### MSR Acceptor
+
+Considering the 144,479 annotated introns clustered within the AD group, below is the summary of their MSR at their acceptor splice site (i.e. the frequency of mis-splicing at their 3'ss):
+
+```{r msra_ad, echo=F}
+
+  common_introns_subsample_tidy_MSRA <- common_introns_subsample_tidy %>%
+    dplyr::select(ref_junID, MSR_A, sample_type) %>%
+    spread(sample_type, value = MSR_A)
+
+  common_introns_subsample_tidy_MSRA %>% pull(AD) %>% summary %>% print()
 
 ```
 
 
-Summary of the MSR_A in common introns from AD samples:
-```{r msra_ad}
+Considering the same set of 144,479 annotated introns clustered within the control group, below is the summary of their MSR at their acceptor splice site:
+```{r msra_control, echo=F}
 
-  common_introns_subsample %>% filter(sample_type == "AD") %>% pull(MSR_A) %>% summary %>% print()
-
-```
-
-
-Summary of the MSR_A in common introns from control samples:
-```{r msra_control}
-
-  common_introns_subsample %>% filter(sample_type == "control") %>% pull(MSR_A) %>% summary
+  common_introns_subsample_tidy_MSRA %>% pull(control) %>% summary() %>% print()
 
 ```
 
 
-Wilcoxon test:
+Introns from AD samples seem to present higher levels of mis-splicing activity at their acceptor splice site. To formally test this result, we performed a one-tailed paired Wilcoxon test. The alternative hypothesis tested corresponded to:
 
-- H1: the common annotated introns from AD samples have higher MSR_A values than in control samples):
-- One-tailed and paired test
+- **H1: the common annotated introns in AD samples have higher MSR at their acceptor splice sites than in control samples**
 
 
-```{r msra_wilxcoxon}
+```{r msra_wilxcoxon, echo=F}
 
-  wilcox.test(x = common_introns_subsample %>% filter(sample_type == "AD") %>% pull(MSR_A),
-            y = common_introns_subsample %>% filter(sample_type == "control") %>% pull(MSR_A),
+  wilcox.test(x = common_introns_subsample_tidy_MSRA %>% pull(AD),
+            y = common_introns_subsample_tidy_MSRA %>% pull(control),
             alternative = "greater",
             paired = T,
             correct = T)
 
 ```
-<br><br>
 
-### GO ENRICHMENT
+When we look at the effect size between the sample type (i.e. "AD" or "Control") and the MSR_Acceptor measure:
 
-GO Enrichment of the genes containing introns with higher levels of MSR_A in AD samples compared to control samples.
+```{r msra_effsize, echo=F}
 
-- Total common introns (n= 148,413). 
-- Background genes (n=15,617). These are all genes parenting all (n= 148,413) introns.
-- Introns with increasing levels of MSR_A in AD vs control (n=9,292). Genes parenting those introns n=6,025 (these are the genes evaluated on the GO enrichment analysis).
-- Introns with decreasing levels of MSR_A in AD vs control (n=6,645).
-- Introns with the same value n=132,476. These are majoritarily MSR_A=0.
+  rstatix::wilcox_effsize(data = common_introns_subsample_tidy_MSRA %>% 
+                            gather(key = ref_junID, value = type) %>%
+                            dplyr::rename(type = ref_junID, MSR_A = type) %>%
+                            mutate(type = type %>% as.factor()),
+                          formula = MSR_A ~ type,
+                          paired = T)
+
+```
+
+Results from this one-tailed paired Wilcoxon test indicate that the null hypothesis is rejected and, therefore, the alternative hypothesis can be accepted.
 
 
-```{r go_enrichment}
+\newpage
+
+## GO Enrichment
+
+We run a GO Enrichment analysis of the genes that contained introns with increasing levels of mis-splicing activity at any of their two splice sites (i.e. MSR Donor and MSR Acceptor) in AD samples as compared to control samples.
+
+**Methods:** From the 144,469 annotated introns studied, we found that 23,811 introns presented higher levels of mis-splicing activity in at least one of their two splice sites (i.e. MSR_D and/or MSR_A) across AD samples as compared to control samples. There were n=10,527 unique genes parenting the 23,811 introns. As background, we used the 17,345 unique genes parenting all (n= 144,469) annotated introns studied. 
 
 
-file_path <- paste0(figures_path, '/go_enrichment_msra.png') 
+```{r goEnrichmentDonor, echo=F}
+
+
+file_path <- paste0(figures_path, '/go_enrichment_msr.png') 
 knitr::include_graphics(file_path)
 
 ```
 
 
-# Conclusions
+<!-- ### Increasing MSR Acceptor -->
 
-There is a significant increase in mis-splicing activity in samples diagnosed with Alzheimer's disease (AD) as compared to neurologically normal samples.
+<!-- **Methods:** From the 144,469 annotated introns studied, we found that 14,926 introns presented higher levels of mis-splicing activity at their acceptor splice (i.e. MSR_A) site across AD samples as compared to control samples. There were n=8,136 unique genes parenting the 14,926 introns. As background, we used the 17,345 unique genes parenting all (n= 144,469) annotated introns studied. There were 11,887 introns with decreasing levels of MSR_A levels in AD vs control samples.  -->
 
-The MSR is a good and robust measure to evaluate the mis-splicing activity of introns across different sample conditions.
+<!-- ```{r goEnrichmentAcceptor, echo=F} -->
 
-# Next steps
 
-- Reproduce this analysis in another recount3 dataset.
-- Incorporate these results in the response to the reviewers and the Splicing paper.
+<!-- file_path <- paste0(figures_path, '/go_enrichment_msra.png')  -->
+<!-- knitr::include_graphics(file_path) -->
 
-# Session info
+<!-- ``` -->
 
-<details>
-  <summary>Show/hide</summary>
+## KEGG Enrichment 
 
-```{r reproducibility, echo = FALSE}
-# Session info
-library("sessioninfo")
-options(width = 120)
-session_info()
+We run a KEGG Enrichment analysis of the genes that contained introns with increasing levels of mis-splicing activity at any of their two splice sites (i.e. MSR Donor and MSR Acceptor) in AD samples as compared to control samples.
+
+**Methods:** From the 144,469 annotated introns studied, we found that 23,811 introns presented higher levels of mis-splicing activity in at least one of their two splice sites (i.e. MSR_D and/or MSR_A) across AD samples as compared to control samples. There were n=10,527 unique genes parenting the 23,811 introns. As background, we used the 17,345 unique genes parenting all (n= 144,469) annotated introns studied. 
+
+```{r keggEnrichment, echo=F}
+
+
+file_path <- paste0(figures_path, '/kegg_enrichment_msr.png') 
+knitr::include_graphics(file_path)
+
 ```
 
-</details> 
+<!-- ### Increasing MSR Acceptor -->
+
+<!-- **Methods:** From the 144,469 annotated introns studied, we found that 14,926 introns presented higher levels of mis-splicing activity at their acceptor splice (i.e. MSR_A) site across AD samples as compared to control samples. There were n=8,136 unique genes parenting the 14,926 introns. As background, we used the 17,345 unique genes parenting all (n= 144,469) annotated introns studied. There were 11,887 introns with decreasing levels of MSR_A levels in AD vs control samples.  -->
+
+<!-- ```{r keggEnrichmentAcceptor, echo=F} -->
+
+
+<!-- file_path <- paste0(figures_path, '/kegg_enrichment_msra.png')  -->
+<!-- knitr::include_graphics(file_path) -->
+
+<!-- ``` -->
+
+## REACTOME Enrichment 
+
+We run a REACTOME Enrichment analysis of the genes that contained introns with increasing levels of mis-splicing activity at any of their two splice sites (i.e. MSR Donor and MSR Acceptor) in AD samples as compared to control samples.
+
+**Methods:** From the 144,469 annotated introns studied, we found that 23,811 introns presented higher levels of mis-splicing activity in at least one of their two splice sites (i.e. MSR_D and/or MSR_A) across AD samples as compared to control samples. There were n=10,527 unique genes parenting the 23,811 introns. As background, we used the 17,345 unique genes parenting all (n= 144,469) annotated introns studied. 
+
+
+```{r reactomeEnrichment, echo=F}
+
+
+file_path <- paste0(figures_path, '/reactome_enrichment_msr.png') 
+knitr::include_graphics(file_path)
+
+```
+
+
+
+# Conclusions
+
+**There is a significant increase in mis-splicing activity across introns in samples diagnosed with Alzheimer's disease (AD) as compared to introns across neurologically normal samples.**
+
+**The patterns of splicing noise reported in the main manuscript robustly remain, regarding the MSR as a compelling measure to evaluate the mis-splicing activity of introns across different sample conditions.**
+
+
+<!-- # Session info -->
+
+<!-- <details> -->
+<!--   <summary>Show/hide</summary> -->
+
+<!-- ```{r reproducibility, echo = FALSE} -->
+<!-- # Session info -->
+<!-- library("sessioninfo") -->
+<!-- options(width = 120) -->
+<!-- session_info() -->
+<!-- ``` -->
+
+<!-- </details>  -->
