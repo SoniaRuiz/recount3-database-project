@@ -1102,6 +1102,14 @@ test_MSR_differences <- function()  {
 
 
 
+#' Title
+#' Test for differences in MSR_D and MSR_A between the introns from AD vs control samples considering 
+#' the biotype of the transcripts from which the introns originated (protein-coding and noncoding).
+#' Using one-tailed paired Wilcoxon test
+#' @return
+#' @export
+#'
+#' @examples
 plot_MSR_by_biotype <- function() {
   
   common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
