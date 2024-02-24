@@ -13,6 +13,10 @@ library(DBI)
 
 
 base_folder <- here::here()
+
+print(base_folder)
+
+# base_folder <- "/mnt/PROJECTS/splicing-accuracy-manuscript/"
 dependencies_folder <- paste0("~/PROJECTS/splicing-accuracy-manuscript/dependencies/")
 
 
@@ -34,7 +38,7 @@ data_source <- "data_sources/sra"
 ## LOAD SOURCE SCRIPTS
 #####################################
 
-setwd(file.path("~/PROJECTS/splicing-accuracy-manuscript/scripts"))
+setwd(file.path("~/PROJECTS/splicing-accuracy-manuscript/", "/scripts"))
 files.sources = list.files()
 sapply(files.sources, source)
 setwd(file.path(base_folder))
@@ -65,46 +69,46 @@ for (gtf_version in gtf_versions) {
   #                        database.folder = database_folder,
   #                        results.folder = results_folder)
 
-  # prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
-  #                       data.source = data_source,
-  #                       results.folder = results_folder,
-  #                       subsampling = T,
-  #                       levelqc1.folder = database_folder,
-  #                       supporting.reads = supportive_reads,
-  #                       num.cores = 2)
-  # 
-  # junction_pairing(recount3.project.IDs = recount3_project_IDs,
-  #                  results.folder = results_folder,
-  #                  replace = T,
-  #                  num.cores = 2)
-  # 
-  # get_all_annotated_split_reads(recount3.project.IDs = recount3_project_IDs,
-  #                               database.folder = database_folder,
-  #                               results.folder = results_folder)
-  # 
-  # get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
-  #                          database.folder = database_folder,
-  #                          results.folder = results_folder)
+  prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
+                        data.source = data_source,
+                        results.folder = results_folder,
+                        subsampling = T,
+                        levelqc1.folder = database_folder,
+                        supporting.reads = supportive_reads,
+                        num.cores = 2)
+
+  junction_pairing(recount3.project.IDs = recount3_project_IDs,
+                   results.folder = results_folder,
+                   replace = T,
+                   num.cores = 2)
+
+  get_all_annotated_split_reads(recount3.project.IDs = recount3_project_IDs,
+                                database.folder = database_folder,
+                                results.folder = results_folder)
+
+  get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
+                           database.folder = database_folder,
+                           results.folder = results_folder)
 
 
   recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
 
 
-  # tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
-  #                    database.folder = database_folder,
-  #                    levelqc1.folder = database_folder,
-  #                    results.folder = results_folder)
-  # 
-  # if ( !file.exists(paste0(results_folder, "/all_junID_PC_biotype.rds")) ) {
-  #   generate_transcript_biotype_percentage(gtf.version = gtf_version,
-  #                                          database.folder = database_folder,
-  #                                          results.folder = results_folder)
-  # }
+  tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
+                     database.folder = database_folder,
+                     levelqc1.folder = database_folder,
+                     results.folder = results_folder)
 
-  # generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
-  #                       data.source = data_source,
-  #                       tpm.folder = tpm_folder,
-  #                       results.folder = results_folder)
+
+  generate_transcript_biotype_percentage(gtf.version = gtf_version,
+                                         database.folder = database_folder,
+                                         results.folder = results_folder)
+
+
+  generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
+                        data.source = data_source,
+                        tpm.folder = tpm_folder,
+                        results.folder = results_folder)
 
 
   database_path <- paste0(database_folder,  "/", project_name, ".sqlite")

@@ -12,7 +12,7 @@ library(DBI)
 setwd(normalizePath("."))
 # setwd(normalizePath("/mnt/PROJECTS/recount3-database-project/"))
 
-gtf_version <- 110
+gtf_version <- 105
 supportive_reads <- 1
 #project_id <- "SRP058181" 
 project_id <- "SRP100948"
@@ -32,13 +32,29 @@ con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
 
-## GET FROM MASTER TABLE
+## QUERY MASTER TABLES 
+
 query = paste0("SELECT * FROM 'metadata'")
-df_metadata <- dbGetQuery(con, query) %>% as_tibble()
+df_metadata <- dbGetQuery(con, query) %>% distinct(external_id, .keep_all = T) %>% as_tibble()
+all_projects <- df_metadata$SRA_project %>% unique
+
+query <- paste0("SELECT * FROM 'intron'")
+master_introns <- dbGetQuery(con, query) %>% as_tibble()
+
+query <- paste0("SELECT * FROM 'novel'")
+master_novel_junctions <- dbGetQuery(con, query) %>% as_tibble()
+
+query <- paste0("SELECT * FROM 'transcript'")
+master_transcripts <- dbGetQuery(con, query) %>% as_tibble()
+
+query <- paste0("SELECT * FROM 'gene'")
+master_gene <- dbGetQuery(con, query) %>% as_tibble()
 
 all_projects <- df_metadata$SRA_project %>% unique
 all_clusters <- df_metadata$cluster %>% unique()
 
+
+## UTILS
 
 get_mode <- function(data) {
   uniqv <- unique(data)
@@ -52,11 +68,9 @@ custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = 
                          axis.line = element_line(colour = "black"),
                          axis.title = element_text(size = 7, family="Arial", colour = "black"),
                          axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
-                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", 
-                                                    hjust = 0.5, vjust = 0.5),
+                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 0.5, vjust = 0.5),
                          strip.text = element_text(size = 7, family="Arial", colour = "black"),
-                         
-                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         legend.text = element_text(size = 7, family="Arial", colour = "black"),
                          legend.position = "top",
                          legend.box = "vertical")
 
@@ -67,7 +81,7 @@ custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = 
 
 ## SECTION 1 ---------------------------------------------
 
-dummie_testing <- function() {
+dummie_test <- function() {
   
   #######################################
   ## Test that the read counts assigned to a random intron 
@@ -87,7 +101,8 @@ dummie_testing <- function() {
   ## Choose a random annotated intron
   junID <- sample(x = df_missplicing$ref_junID, size = 1)
   
-  split_read_counts <- readRDS(file = paste0(results_folder, "/", project_id, "/base_data/",project_id, "_", cluster_id, "_split_read_counts.rds"))
+  split_read_counts <- readRDS(file = paste0(results_folder, "/", project_id, 
+                                             "/base_data/",project_id, "_", cluster_id, "_split_read_counts.rds"))
   
   if ( is.null(names(split_read_counts)) ) { 
     split_read_counts <- split_read_counts %>% 
@@ -152,6 +167,7 @@ dummie_testing <- function() {
   }
 }
 
+
 #' Title
 #' Obtain general stats about the database
 #' @return
@@ -177,27 +193,27 @@ get_database_stats <- function() {
   #}
   
 
-  query <- paste0("SELECT * from 'intron'")
-  db_introns <- dbGetQuery(con, query) 
-  db_introns %>% head()
-  db_introns %>% distinct(ref_junID) %>% nrow()
-  db_introns %>%
+  master_introns %>% head()
+  master_introns %>% distinct(ref_junID) %>% nrow()
+  master_introns %>%
     dplyr::count(misspliced)
   
   
   ## Collectively, we detected 3,865,268 unique novel junctions, equating to 14 novel junctions per annotated intron. 
-  query <- paste0("SELECT * from 'novel'")
-  db_novel <- dbGetQuery(con, query) 
-  db_novel %>% head
-  db_novel %>% nrow() 
+  master_novel_junctions %>% head
+  master_novel_junctions %>% nrow() 
   
-  db_novel %>% 
+  master_novel_junctions %>% 
     dplyr::count(novel_type)
   
-  (db_novel %>% nrow()) / (db_introns %>% filter(misspliced==1) %>% nrow())
+  (master_novel_junctions %>% nrow()) / (master_introns %>% filter(misspliced==1) %>% nrow())
   
   
+  master_transcripts %>% distinct(transcript_id) %>% nrow()
+  master_gene %>% distinct(gene_id) %>% nrow()
+
 }
+
 
 #' Title
 #' Get an overview of the metadata of the project
@@ -313,6 +329,7 @@ plot_metadata <- function() {
   
 }
 
+
 #' Title
 #' Get common introns between cases and controls (ONLY FRONTAL CORTEX) and subsample them by read coverage
 #' @return
@@ -323,6 +340,7 @@ get_common_subsample_introns <- function() {
   
   
   clusters <- df_metadata$cluster %>% unique
+  
   ###############################
   ## GET DATA FOR CONTROL
   ###############################
@@ -378,15 +396,21 @@ get_common_subsample_introns <- function() {
                               introns_control$ref_junID) %>% unique()
   common_introns %>% length()
   
+  rbind(introns_case %>%
+          mutate(sample_type = "AD"), 
+        introns_control %>%
+          mutate(sample_type = "control"))  %>%
+    filter(ref_junID %in% common_introns) %>%
+    dplyr::count(sample_type)
+  
   ## TIDY DATAFRAME
   df_introns_tidy <- rbind(introns_case %>%
                              mutate(sample_type = "AD"), 
                            introns_control %>%
                              mutate(sample_type = "control"))  %>%
     filter(ref_junID %in% common_introns) %>%
-    group_by(sample_type, ref_junID) %>%
-    mutate(mean_coverage = ref_sum_counts/ref_n_individuals) %>%
-    mutate(mean_coverage = mean_coverage %>% log10()) %>%
+    group_by(sample_type) %>%
+    mutate(mean_coverage = (ref_sum_counts/ref_n_individuals) %>% log10()) %>%
     ungroup()
   
   df_introns_tidy
@@ -411,7 +435,7 @@ get_common_subsample_introns <- function() {
                       values = c("#bfbfbf","#666666"),
                       breaks = c("control", "AD"),
                       label = c("Control", "AD")) +
-    ylim(c(0, 1.5))+
+    ylim(c(0, 1))+
     xlim(c(0, 3))
   
   plot_BS
@@ -426,6 +450,8 @@ get_common_subsample_introns <- function() {
     subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
     
   } else {
+    
+    set.seed(1000)
     print(paste0(Sys.time(), " - starting subsampling ... "))
     
     ## Subsampling introns to control by similarity in mean read coverage
@@ -434,11 +460,20 @@ get_common_subsample_introns <- function() {
                                 mutate(sample_type = sample_type %>% as.factor()),
                               distance = df_introns_tidy$mean_coverage,
                               method = "nearest",
-                              caliper = c(mean_coverage = 0.0005),
+                              caliper = c(mean_coverage = 0.005),
                               std.caliper = FALSE)
     subsample <- MatchIt::match.data(m.out)
     subsample %>% dplyr::count(sample_type)
+    
+    saveRDS(object = subsample,
+            file = paste0(results_folder, "/common_subsampled_introns_seed1000.rds"))
+    
   }
+  
+  subsample %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID) %>%
+    dplyr::count(sample_type)
   
   
   #######################################
@@ -455,7 +490,7 @@ get_common_subsample_introns <- function() {
                       values = c("#bfbfbf","#666666"),
                       breaks = c("control", "AD"),
                       label = c("Control", "AD")) +
-    ylim(c(0, 1.5))+
+    ylim(c(0, 1))+
     xlim(c(0, 3))
   plot_AS
   
@@ -469,13 +504,7 @@ get_common_subsample_introns <- function() {
   ggplot2::ggsave(paste0(figures_path, "/subsampling.png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
-  subsample %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID) %>%
-    dplyr::count(sample_type)
-  
-  saveRDS(object = subsample,
-          file = paste0(results_folder, "/common_subsampled_introns.rds"))
+
 
 }
 
@@ -490,10 +519,11 @@ get_common_subsample_introns <- function() {
 plot_unique_junctions <- function() {
   
   ## Load common introns
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds")) %>%
+  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns_seed1000.rds")) %>%
     dplyr::select(-distance,-weights,-subclass)
-  common_introns_subsample$ref_junID %>% unique() %>% length()
   
+  common_introns_subsample$ref_junID %>% unique() %>% length()
+  common_introns_subsample %>% dplyr::count(sample_type)
   
   df_unique_junctions <- map_df(all_clusters, function(cluster_id) {
     
@@ -520,19 +550,19 @@ plot_unique_junctions <- function() {
     
     
     
-    ###########################
+    ############################
     ## GET THE NOVEL JUNCTIONS
-    ###########################
+    ############################
     
-    query <- paste0("SELECT ref_junID, novel_junID
+    query <- paste0("SELECT *
                     FROM '", cluster_id, "_", project_id, "_misspliced'")
     novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
     
     
-    query <- paste0("SELECT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", 
-                    paste(novel_junctions$novel_junID, collapse = ","), ")")
+
     novel_junctions <- novel_junctions %>%
-      left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+      inner_join(y = master_novel_junctions %>% 
+                   dplyr::select(novel_junID,novel_type),
                 by = "novel_junID") %>% 
       as_tibble() %>%
       ## Only common, subsampled introns
@@ -576,40 +606,41 @@ plot_unique_junctions <- function() {
   ######################
   
   
-  df_unique_junctions <- df_unique_junctions %>%
+  df_unique_junctions_tidy <- df_unique_junctions %>%
     dplyr::select(cluster, 
                   donor = donor_prop, 
                   acceptor = acceptor_prop, 
                   annotated_intron = annotated_prop) %>%
     tidyr::gather(key = "type", value = "prop", -cluster ) 
   
-  df_unique_junctions <- df_unique_junctions %>%
-    filter(type != "annotated_intron") %>%
+  df_unique_junctions_tidy <- df_unique_junctions_tidy %>%
     mutate(prop = prop * 100)
   
-  df_unique_junctions$type = factor(df_unique_junctions$type, 
-                                    levels = c("donor","acceptor"))
   
-  
-  ggplot(df_unique_junctions %>%
-           mutate(type_colour = paste0(cluster, "_", type)),
-         aes(x = fct_rev(cluster), y = prop, fill =  type_colour)) + 
-    geom_bar(stat = "identity") +
-    facet_grid(~type) +
+  ggplot(data = df_unique_junctions_tidy %>%
+           mutate(type = factor(type, levels = c("donor", "acceptor", "annotated_intron")),
+                  prop_label = paste0(round(x = prop, digits = 2), "%")),
+         aes(x = cluster, y = prop, fill =  type)) + 
+    geom_bar(stat="identity", position = "stack")+
+    geom_text(aes(label=prop_label), vjust=2, position = "stack", 
+              color="white", size=2.5, fontface = "bold") +
     theme_light() +
-    ylab("% unique novel junctions") +
+    ylab("% unique junctions") +
     xlab("") +
     theme(axis.line = element_line(colour = "black"), 
-          text = element_text(colour = "black", size = 12),
+          #text = element_text(colour = "black", size = 12),
           legend.position = "top") +
-    scale_fill_manual(values = c("#c4eed9","#35B779FF","#f3cefd", "#8c04ae"),
-                      breaks = c("control_donor", "AD_donor","control_acceptor", "AD_acceptor"),
-                      label = c("Donor - Control", "Donor - AD","Acceptor - Control", "Acceptor - AD")) + 
-    guides(fill = guide_legend(title = NULL, ncol = 4, nrow = 1 )) +
-    custom_ggtheme  
+    scale_fill_manual(values = c( "#999999","#64037d", "#35B779FF"),
+                      breaks = c("annotated_intron","acceptor", "donor" ),
+                      label = c("Annotated","Acceptor", "Donor" )) + 
+    guides(fill = guide_legend(title = "", ncol = 3, nrow = 1 )) +
+    custom_ggtheme  + 
+    theme( plot.margin = margin(t = 5,r = 5,l = 5, b = -5),
+           legend.box.margin=margin(b = -10, t = -5))#+
   
   
-  ggplot2::ggsave(paste0(figures_path, "/unique_novel_junctions.png"), width = 180, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figures_path, "/jxn_unique_junctions.png"), 
+                  width = 80, height = 70, units = "mm", dpi = 300)
   
   
   
@@ -631,15 +662,7 @@ plot_unique_reads <- function() {
   
   
   common_introns_subsample$ref_junID %>% unique() %>% length()
-  
-  # common_introns_subsample <- common_introns_subsample %>%
-  #   filter(ref_junID %in% (common_introns_subsample %>%
-  #                            dplyr::count(ref_junID) %>%
-  #                            filter(n==2) %>%
-  #                            pull(ref_junID)))
-  
-  common_introns_subsample %>%
-    dplyr::count(sample_type)
+  common_introns_subsample %>% dplyr::count(sample_type)
   
   df_mean_counts <- map_df(all_clusters, function(cluster_id) {
     
@@ -659,10 +682,7 @@ plot_unique_reads <- function() {
                     FROM '", cluster_id, "_", project_id, "_misspliced'")
     introns <- rbind(introns, dbGetQuery(con, query) %>% 
                        as_tibble())
-    
-    # introns$ref_junID %>% unique %>% length()
-    # common_introns_subsample$ref_junID %>% unique %>% length()
-    
+
     ## Only common, subsampled introns
     introns <- introns %>%
       filter(ref_junID %in% (common_introns_subsample %>%
@@ -678,29 +698,14 @@ plot_unique_reads <- function() {
     novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
     
     
-    query <- paste0("SELECT novel_junID, novel_type 
-                    FROM 'novel' 
-                    WHERE novel_junID IN (", 
-                    paste(novel_junctions$novel_junID, collapse = ","), ")")
-    
     novel_junctions <- novel_junctions %>%
-      inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                 by = "novel_junID") %>% as_tibble()
-    
-    
-    ## Only NOVEL READS FROM common, subsampled introns
-    novel_junctions <- novel_junctions %>%
+      inner_join(y = master_novel_junctions %>% dplyr::select(novel_junID, novel_type) %>% as_tibble(),
+                 by = "novel_junID") %>% 
+      as_tibble() %>%
+      ## Only NOVEL READS FROM common, subsampled introns
       filter(ref_junID %in% (common_introns_subsample %>%
                                filter(sample_type == cluster_id) %>%
                                pull(ref_junID)))
-    
-    
-    # introns %>%
-    #   inner_join(y = novel_junctions,
-    #              by = "ref_junID") %>%
-    #   mutate(sample_type = cluster_id) %>%
-    #   return()
-    # 
     
     ###########################
     ## GET THE PROPORTIONS
@@ -709,87 +714,88 @@ plot_unique_reads <- function() {
     
     annotated <- introns %>%
       dplyr::distinct(ref_junID, .keep_all = T) %>%
-      rowwise() %>%
-      mutate(exp_levels = ref_sum_counts/ref_n_individuals) %>%
-      pull(exp_levels) %>%
+      pull(ref_sum_counts) %>% 
       sum()
+      #rowwise() %>%
+      #mutate(exp_levels = ref_sum_counts/ref_n_individuals) %>%
+      #pull(exp_levels) %>%
+      #sum()
     
     acceptor <- novel_junctions %>%
       filter(novel_type == "novel_acceptor") %>%
       dplyr::distinct(novel_junID, .keep_all = T) %>%
-      rowwise() %>%
-      mutate(exp_levels = novel_sum_counts/novel_n_individuals) %>%
-      pull(exp_levels) %>%
+      pull(novel_sum_counts) %>% 
       sum()
+      #rowwise() %>%
+      #mutate(exp_levels = novel_sum_counts/novel_n_individuals) %>%
+      #pull(exp_levels) %>%
+      #sum()
     
     donor <- novel_junctions %>%
       filter(novel_type == "novel_donor") %>%
       dplyr::distinct(novel_junID, .keep_all = T) %>%
-      rowwise() %>%
-      mutate(exp_levels = novel_sum_counts/novel_n_individuals) %>%
-      pull(exp_levels) %>%
+      pull(novel_sum_counts) %>% 
       sum()
+      #rowwise() %>%
+      #mutate(exp_levels = novel_sum_counts/novel_n_individuals) %>%
+      #pull(exp_levels) %>%
+      #sum()
     
     annotated_p = annotated * 100 / (annotated + acceptor + donor)
     acceptor_p = acceptor * 100 / (annotated + acceptor + donor)
     donor_p = donor * 100 / (annotated + acceptor + donor)
     
     return(data.frame(cluster = cluster_id,
-                      sample_type = c("annotated","acceptor", "donor"),
-                      prop_counts = c(annotated_p, acceptor_p, donor_p),
+                      type = c("annotated","acceptor", "donor"),
+                      prop = c(annotated_p, acceptor_p, donor_p),
                       sum_counts = c(annotated, acceptor, donor)))
-    
-    
     
   })
   
   df_mean_counts
-  
-  # common_introns_subsample%>%
-  #   group_by(sample_type) %>%
-  #   distinct(ref_junID) %>%
-  #   ungroup() %>%
-  #   count(sample_type)
-  # 
-  # df_mean_counts %>%
-  #   group_by(sample_type) %>%
-  #   distinct(ref_junID) %>%
-  #   ungroup() %>%
-  #   count(sample_type)
-  # 
+
   ######################
   ## BAR PLOT
   ######################
   
-  df_mean_counts_violin <- df_mean_counts %>%
-    filter(sample_type != "annotated") 
-  
-  df_mean_counts_violin$sample_type = factor(df_mean_counts_violin$sample_type, 
-                                             levels = c("donor", "acceptor"))
-  
-  ggplot(df_mean_counts_violin %>%
-           mutate(type_colour = paste0(cluster, "_", sample_type)), 
-         aes(x = fct_rev(cluster), y = prop_counts, fill = type_colour)) + 
+  p <- ggplot(df_mean_counts %>%
+           mutate(type = factor(type, levels = c("donor", "acceptor", "annotated")),
+                  prop_label = paste0(round(x = prop, digits = 2), "%")),
+         aes(x = cluster, y = prop, fill =  type)) + 
     geom_bar(stat = "identity") +
-    facet_grid(~sample_type) +
+    ggforce::facet_zoom(ylim = c(95,100)) +
+    geom_text(aes(label=prop_label), 
+              vjust=1.3, 
+              position = "stack", 
+              color="white", size=2.5, fontface = "bold") +
     theme_light() +
-    ylab("% cumulative novel read counts") +
+    ylab("% cumulative split read counts") +
     xlab("") +   
     custom_ggtheme  +
     theme(axis.line = element_line(colour = "black"), 
-          text = element_text(colour = "black", size = 12),
-          legend.position = "top") +
-    scale_fill_manual(values = c("#c4eed9","#35B779FF","#f3cefd", "#8c04ae"),
-                      breaks = c("control_donor", "AD_donor","control_acceptor", "AD_acceptor"),
-                      label = c("Donor - Control", "Donor - AD","Acceptor - Control", "Acceptor - AD")) + 
-    guides(fill = guide_legend(title = NULL, ncol = 4, nrow = 1 )) 
+          legend.position = "top")  +
+    scale_fill_manual(values = c( "#999999","#64037d", "#35B779FF"),
+                      breaks = c( "annotated","acceptor", "donor"),
+                      label = c("Annotated","Acceptor", "Donor")) + 
+    guides(fill = guide_legend(title = "", ncol = 3, nrow = 1 )) + 
+    theme( plot.margin = margin(t = 5,r = 5,l = 5,
+                                b = -5),
+           legend.box.margin=margin(b = -10, t = -5))#+
+  
+  ## Only annotated zoomed graph
+  pb <- ggplot_build(p)
+  pb$data[[2]][1:6, 'alpha'] <- 0
+  pg <- ggplot_gtable(pb)
   
   
-  ggplot2::ggsave(paste0(figures_path, "/read_counts.png"), width = 180, height = 100, units = "mm", dpi = 300)
+  ## save plot
   
-  
-  
+  png(filename=paste0(figures_path, "/jxn_cummulative_read_counts.png"), width = 100, height = 70,  units = "mm", res = 300)
+  plot(pg)
+  dev.off()
+
 }
+
 
 #' Title
 #' Visualise differences in MSR_D and MSR_A values in introns from AD vs control samples
@@ -872,7 +878,8 @@ plot_distances <- function() {
     patchwork::plot_layout(heights = c(8, 1))
   plot_distances
   
-  ggplot2::ggsave(paste0(figures_path, "/distances.png"), width = 180, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figures_path, "/distances.png"), 
+                  width = 180, height = 100, units = "mm", dpi = 300)
   
 }
 
@@ -886,10 +893,12 @@ plot_distances <- function() {
 #' @examples
 plot_modulo <- function() {
   
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds")) %>%
-    dplyr::select(-distance,-weights,-subclass)
+  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
   
-  common_introns_subsample$ref_junID %>% unique() %>% length()
+  common_introns_subsample %>%
+    dplyr::count(sample_type)
+  
+  common_introns_subsample <- common_introns_subsample %>% distinct(ref_junID)
   
   ## Calculate modulo3 from MANE transcripts in 100bp distance
   df_modulo <- map_df(all_clusters, function(cluster_id) {
@@ -898,49 +907,48 @@ plot_modulo <- function() {
     print(paste0(Sys.time(), " - ", cluster_id))
     
     #####################################
-    ## Get the novel junctions from the current tissue
+    ## GET NOVEL JUNCTIONS
     #####################################
     
     query <- paste0("SELECT novel_junID 
                     FROM '", cluster_id, "_", project_id, "_misspliced'")
-    introns <- dbGetQuery(con, query) %>% as_tibble()
+    novel_jnx <- dbGetQuery(con, query) %>% as_tibble()
       
     
-    
-    ## Get the distance location
-    query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                    paste(introns$novel_junID, collapse = ","),")")
-    introns <- introns %>%
+    query <- paste0("SELECT ref_junID, novel_junID, distance
+                    FROM 'novel' WHERE novel_junID IN (",
+                    paste(novel_jnx$novel_junID, collapse = ","),")")
+    novel_jnx <- novel_jnx %>%
       left_join(y = dbGetQuery(con, query) %>% as_tibble(),
                 by = "novel_junID") %>% 
       as_tibble() 
     
       
+    #####################################
+    ## GET INTRON AND TRANSCRIPT INFO
+    #####################################
+    
     ## Add the transcript and MANE info
     query <- paste0("SELECT intron.ref_junID, intron.protein_coding, transcript.MANE
                     FROM 'intron' 
                     INNER JOIN transcript
                     ON intron.transcript_id = transcript.id
-                    WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),") 
-                    AND transcript.MANE = 1")
-    introns <- introns %>%
+                    WHERE ref_junID IN (", paste(novel_jnx$ref_junID, collapse = ","),")")
+    all_jxn <- novel_jnx %>%
       inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
                 by = "ref_junID") %>% 
       as_tibble() 
     
-    df_novel_tidy <- introns %>%
+    
+    df_novel_tidy <- all_jxn %>%
       distinct(novel_junID, .keep_all = T) %>%
-      filter(abs(distance) <= 100, MANE == 1) %>% 
-      mutate(novel_type = str_replace(string = novel_type,
-                                      pattern = "_",
-                                      replacement = " ")) %>%
-      mutate(type_p = ifelse(distance < 0, paste0(novel_type," intron"), paste0(novel_type," exon"))) %>% 
-      mutate(modulo = abs(distance) %% 3) %>%
-      ## Only common, subsampled introns
-      filter(ref_junID %in%  (common_introns_subsample %>%
-                                filter(sample_type == cluster_id) %>%
-                                pull(ref_junID))) 
+      filter(abs(distance) <= 100, 
+             MANE == 1,
+             ref_junID %in% (common_introns_subsample$ref_junID)) %>% 
+      mutate(modulo = abs(distance) %% 3) 
       
+    df_novel_tidy %>% distinct(ref_junID) %>% nrow %>% print
+    
     df_novel_tidy <- df_novel_tidy %>% 
       group_by(modulo) %>%
       summarise(n = n()) %>%
@@ -948,8 +956,10 @@ plot_modulo <- function() {
       mutate(cluster = cluster_id)
     
     return(df_novel_tidy)
+    
   })
   
+  df_modulo
   
   df_modulo$modulo = factor(df_modulo$modulo, 
                             levels = c( "0", "1", "2"))
@@ -963,31 +973,25 @@ plot_modulo <- function() {
     mutate(freq = freq * 100)
   
   
-  ggplot(df_modulo_tidy %>%
-           mutate(mod_type = paste0(cluster, "_", modulo)) %>%
-           mutate(cluster = factor(cluster,
-                                    levels = c("control", "AD"))),
-         aes(x = cluster, y = freq, fill = mod_type)) +
+  ggplot(data = df_modulo_tidy %>%
+           mutate(freq_label = paste0(round(x = freq, digits = 2), "%"),
+                  modulo = factor(modulo, levels = c("2", "1", "0"))),
+         aes(x = cluster, y = freq, fill = modulo)) +
     geom_bar(stat = "identity") +
-    xlab("Sample type") +
-    ylab("% of novel junctions") +
-    ggforce::facet_row(~modulo) +
-    scale_fill_manual(values = c("#bfbfbf","#666666",
-                                 "#bfbfbf","#666666",
-                                 "#bfbfbf","#666666"),
-                      breaks = c("control_0", "AD_0",
-                                 "control_1", "AD_1",
-                                 "control_2", "AD_2"),
-                      label = c("Control", "AD",
-                                "Control", "AD",
-                                "Control", "AD")) + 
-    
+    xlab("") +
+    ylab("% of junctions") +
+    geom_text(aes(label=freq_label), vjust=2, position = "stack", 
+              color="white", size=2.5, fontface = "bold") +
+    ggsci::scale_fill_npg(breaks=c('0', '1', '2')) +
     theme_light() +
     custom_ggtheme +
-    theme(legend.position = "none") 
+    guides(fill = guide_legend(title = "Modulo: ", ncol = 3, nrow = 1 )) +
+    theme( plot.margin = margin(t = 5, r = 5, l = 5, b = -3),
+           legend.box.margin=margin(b = -10, t = -5)) 
   
   
-  ggplot2::ggsave(paste0(figures_path, "/modulo.png"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figures_path, "/modulo.png"), 
+                  width = 60, height = 70, units = "mm", dpi = 300)
   
 }
 
@@ -1056,8 +1060,8 @@ test_MSR_differences <- function()  {
   wilcox.test(x = common_introns_subsample_tidy %>% filter(sample_type == "AD") %>% pull(MSR_A),
               y = common_introns_subsample_tidy %>% filter(sample_type == "control") %>% pull(MSR_A),
               alternative = "greater",
-              paired = 
-                correct = T)
+              paired = T,
+              correct = T)
   
   wilcox.test(x = common_introns_subsample_tidy_MSRA %>% pull(AD),
               y = common_introns_subsample_tidy_MSRA %>% pull(control),
@@ -1097,8 +1101,139 @@ test_MSR_differences <- function()  {
 }
 
 
+
+plot_MSR_by_biotype <- function() {
+  
+  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
+  common_junID <- common_introns_subsample %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == 2) %>%
+    pull(ref_junID)
+  
+  
+  ################################
+  ## TIDY DATA BEFORE PLOTTING
+  ################################
+  
+  df_introns_biotype <- common_introns_subsample %>%
+    filter(ref_junID %in% common_junID) %>%
+    inner_join(y = master_introns %>% dplyr::select(ref_junID, protein_coding),
+               by = "ref_junID") %>%
+    filter(protein_coding %in% c(0,100)) %>%
+    mutate(biotype = ifelse(protein_coding == 100, "PC", "non PC"))
+  
+
+
+  df_introns_biotype$biotype = factor(df_introns_biotype$biotype, 
+                                      levels = c("non PC","PC"))
+  
+  df_introns_biotype <- df_introns_biotype %>%
+    dplyr::select(ref_junID, biotype, MSR_D, MSR_A) %>%
+    gather(key = "MSR_type", value = "MSR", -biotype, -ref_junID)
+  
+  
+  df_introns_biotype$MSR_type = factor(df_introns_biotype$MSR_type, 
+                                       levels = c("MSR_A", "MSR_D"))
+  
+  
+  print(paste0(Sys.time(), " - ", df_introns_biotype %>% nrow(), " - introns after tidying!"))
+  
+  
+  df_introns_biotype %>% 
+    filter(biotype == "PC") %>%
+    pull(MSR) %>%
+    summary()
+  
+  df_introns_biotype %>% 
+    filter(biotype == "non PC") %>%
+    pull(MSR) %>%
+    summary()
+  
+  
+  ###########################
+  ## PLOT BY MSR GROUP
+  ###########################
+  
+  # scales::show_col(scales::viridis_pal(option = "B")(40))
+  # scales::show_col(scales::viridis_pal(option = "C")(40))
+  # scales::show_col(scales::viridis_pal(option = "D")(40))
+  # scales::show_col(scales::viridis_pal(option = "E")(40))
+  # scales::show_col(scales::viridis_pal(option = "F")(40))
+  # scales::show_col(scales::viridis_pal(option = "G")(40))
+  # scales::show_col(scales::viridis_pal(option = "H")(40))
+  
+  
+  df_introns_biotype_tidy <- df_introns_biotype %>%
+    group_by(biotype, MSR_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    mutate(percentile_group = case_when(MSR == 0 ~ "0",
+                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
+                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
+                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
+                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
+                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
+  
+  df_introns_biotype_tidy$MSR_type = factor(df_introns_biotype_tidy$MSR_type, 
+                                            levels = c("MSR_D","MSR_A"))
+  df_introns_biotype_tidy$percentile_group = factor(df_introns_biotype_tidy$percentile_group, 
+                                                    levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
+  
+  df_introns_biotype_tidy$biotype = factor(df_introns_biotype_tidy$biotype, 
+                                           levels = c("PC","non PC"))
+  
+  plotMSR_donor <- ggplot(data = df_introns_biotype_tidy ) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge", linewidth = .5, color = "#333333")+
+    #ggtitle("MSR Donor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("Number of annotated introns") +
+    #ylim(c(0,23000))+
+    ggforce::facet_row(~MSR_type) +
+    scale_fill_manual(values = c("#333333","#999999"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding   ","Non-protein-coding ")) +
+    theme_light() +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = "",
+                               ncol = 2, nrow = 1))
+  plotMSR_donor
+  
+  
+  ## Non-protein-coding
+  plotMSR_acceptor <- ggplot(data = df_introns_biotype_tidy %>% 
+                               filter(MSR_type == "MSR_A")) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge", linewidth = 0.5, color = "#333333")+
+    ggtitle("MSR Acceptor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("Number of annotated introns") +
+    #ylim(c(0,23000))+
+    
+    scale_fill_manual(values = c("#333333","#999999"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding ","Non-protein-coding ")) +
+    theme_light() +
+    custom_ggtheme +
+    guides(fill = guide_legend(ncol = 2, nrow = 1))
+  
+  
+  ggpubr::ggarrange(plotMSR_donor,
+                    plotMSR_acceptor,
+                    nrow = 1,
+                    ncol = 2,
+                    common.legend = T)
+  
+  
+  
+  
+  print(paste0(Sys.time(), " - saving plot..."))
+  file_name <- paste0(figures_folder, "/panel4bc")
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+}
+
+
 #' Title
-#' GO ENRICHMENT analysis of the introns showing increasing MSR values in AD compared to control samples
+#' GO, KEGG and REACTOME ENRICHMENT analysis of the introns showing increasing MSR values in AD compared to control samples
 #' Only using common, subsampled introns
 #' @return
 #' @export
@@ -1129,40 +1264,29 @@ plot_GO_KEGG__REACTOME_terms <- function() {
                  distinct(ref_junID, .keep_all = T),
                by = "ref_junID")
   
- 
-  ## GET GENE DATA
-  query = paste0("SELECT id, gene_name, gene_id FROM 'gene'")
-  df_gene <- dbGetQuery(con, query) %>% as_tibble()
-  
-  ## GET TRANSCRIPT DATA
-  query = paste0("SELECT id, gene_id FROM 'transcript'")
-  df_transcript <- dbGetQuery(con, query) %>% 
-    as_tibble() %>%
-    inner_join(y = df_gene %>% dplyr::select(id, gene_name),
-               by =c("gene_id" = "id"))
   
   ## GET MASTER INTRON DATA
-  query = paste0("SELECT ref_junID, transcript_id FROM 'intron'")
-  df_intron <- dbGetQuery(con, query) %>% 
-    as_tibble() %>%
-    inner_join(y = df_transcript,
-               by =c("transcript_id" = "id"))
+  df_intron <- master_introns %>% 
+    dplyr::select(ref_junID, transcript_id) %>%
+    inner_join(y = master_transcripts %>% dplyr::select(id, gene_id),
+               by =c("transcript_id" = "id")) %>%
+    inner_join(y = master_gene %>% dplyr::select(id, gene_name, gene_id),
+               by =c("gene_id" = "id")) 
   
   
   ## Add gene name to introns with increasing MSR_A values in AD compared to control
   introns_increasing_msr <- common_introns_subsample_column %>%
-    filter(MSR_A_AD > MSR_A_control | 
-             MSR_D_AD > MSR_D_control) %>%
+    filter((MSR_A_AD > MSR_A_control) | (MSR_D_AD > MSR_D_control)) %>%
     inner_join(y = df_intron,
-               by =c("ref_junID")) %>%
+               by = c("ref_junID")) %>%
     distinct(ref_junID, .keep_all = T)
+  
   
   introns_increasing_msr
   # introns_descending_msra <- common_introns_subsample_column %>%
   #   filter(MSR_A_AD < MSR_A_control) %>%
   #   inner_join(y = df_intron,
   #              by =c("ref_junID")) 
-  
   
   
   ## Get gene background data
@@ -1185,9 +1309,16 @@ plot_GO_KEGG__REACTOME_terms <- function() {
     qvalueCutoff  = 0.05
   )
   
-  clusterProfiler::dotplot(ego_MSRA, 
+  
+  category_terms <-25
+  clusterProfiler::dotplot(ego_MSRA %>%
+                             filter(ONTOLOGY == "CC") %>%
+                             filter(str_detect(string = Description,negate = T,
+                                               pattern = "with bulged")) %>%
+                             filter(str_detect(string = Description,negate = T,
+                                               pattern = "ubiquitin-dependent")), 
                            x = "GeneRatio", 
-                           showCategory = 40, 
+                           showCategory = category_terms, 
                            split="ONTOLOGY") +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
     xlab("Gene Ratio") +
@@ -1196,15 +1327,16 @@ plot_GO_KEGG__REACTOME_terms <- function() {
     theme(#axis.text.x = element_text(angle = 90, vjust = 0.5),
           legend.position = "top",
           legend.box="horizontal",
-          plot.margin = margin(0,0,0,0),
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(b = -9)) + 
+          plot.margin = margin(t = -5,b = 0,l = 2,r = 2),
+          legend.margin=margin(t = -5,b = -5,0,0),
+          legend.box.margin=margin(t = -5,r = -5,b = -5,l = -5)) + 
     scale_size(range = c(1, 5)) +
     guides(size = guide_legend(title = "Gene Count: "),
            colour = guide_legend(title = "q: "))               
   
   
-  ggplot2::ggsave(paste0(figures_path, "/go_enrichment_msr.png"), width = 180, height = 180, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figures_path, "/AD_Control_go_enrichment_MSR_",category_terms,".png"), 
+                  width = 180, height = 75, units = "mm", dpi = 300)
   
  
   
@@ -1213,43 +1345,55 @@ plot_GO_KEGG__REACTOME_terms <- function() {
   ################################
   
   library('org.Hs.eg.db')
+  
+  
+  category_terms <-20
 
   
   # mapIds(org.Hs.eg.db, introns_increasing_msra, 'ENTREZID', 'SYMBOL')
   
   ekegg_MSR <- clusterProfiler::enrichKEGG(
-    gene          = mapIds(x = org.Hs.eg.db, keys = introns_increasing_msr$gene_name %>% unique, 
-                           column = 'ENTREZID', keytype = 'SYMBOL') %>% unlist %>% unname,
+    gene          = mapIds(x = org.Hs.eg.db, 
+                           keys = introns_increasing_msr %>% drop_na %>% pull(gene_name) %>% unique, 
+                           column = 'ENTREZID', 
+                           keytype = 'SYMBOL')%>% unlist %>% unname ,
     organism      = "hsa",
     keyType       = "kegg",
     universe      = mapIds(x = org.Hs.eg.db, 
-                           keys = bg_genes$gene_name %>% unique, 
+                           keys = bg_genes %>% drop_na %>% pull(gene_name) %>% unique(), 
                            column = 'ENTREZID', 
-                           keytype = 'SYMBOL') %>% unlist %>% unname, 
+                           keytype = 'SYMBOL') %>% unlist %>% unname , 
     pAdjustMethod = "fdr")
   
   
-  plotKEGG <-  clusterProfiler::dotplot(ekegg_MSR %>% mutate(ONTOLOGY = "KEGG"), 
-                                        #showCategory = 40, 
+  plotKEGG <-  clusterProfiler::dotplot(ekegg_MSR %>% 
+                                          mutate(ONTOLOGY = "KEGG") %>%
+                                          filter(!(str_detect(string = Description, pattern = "Chemical carcino"))) %>%
+                                          filter(!(str_detect(string = Description, pattern = "Protein processing in"))) %>%
+                                          filter(!(str_detect(string = Description, pattern = "Amino sugar"))), 
+                                        showCategory = category_terms, 
                                         split="ONTOLOGY")
   
   plotKEGG +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 40)) +
+    scale_y_discrete(labels = 
+                       function(x) stringr::str_wrap(x, width = 40)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free", space = "free") +
     #Coord_flip() +
     custom_ggtheme +
-    theme(#axis.text.x = element_text(angle = 90,vjust = 0.5,hjust = 1),
+    theme(text = element_text(colour = "black", size = 7),
           legend.position = "top",
-          legend.box="horizontal",
-          #legend.margin=margin(0,0,0,0),
-          plot.margin = margin(0,0,0,0),
-          legend.box.margin=margin(b = -9)) + 
+          legend.box="vertical",
+          plot.margin = margin(t = 0, b =0, 0, 0),
+          legend.margin = margin(t = -5, b = -5, r = 1,l = 1),
+          legend.box.margin=margin(t = -10,b = -5, r = 0,l = 0)) + 
     scale_size(range = c(1, 5))+
     guides(colour = guide_legend(title = "q: "),
-           size = guide_legend(title = "Gene count: "))
+           size = guide_legend(title = "Gene count: "),
+           nrow = 2, ncol = 2 ) 
   
-  ggplot2::ggsave(paste0(figures_path, "/kegg_enrichment_msr.png"), width = 180, height = 180, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figures_path, "/AD_Control_kegg_enrichment_MSR_",category_terms,".png"), 
+                  width = 120, height = 70, units = "mm", dpi = 300)
   
   ################################
   ## REACTOME ENRICHMENT
@@ -1257,6 +1401,7 @@ plot_GO_KEGG__REACTOME_terms <- function() {
   
   
   library(ReactomePA)
+  
   reactome_MSR <- ReactomePA::enrichPathway(gene = mapIds(x = org.Hs.eg.db, 
                                                           keys = introns_increasing_msr$gene_name %>% unique,
                                                           column = 'ENTREZID', 
@@ -1272,26 +1417,22 @@ plot_GO_KEGG__REACTOME_terms <- function() {
   
   
   plotREAC <-  clusterProfiler::dotplot(reactome_MSR %>% mutate(ONTOLOGY = "REACTOME"), 
-                                        showCategory = 40, 
+                                        showCategory = category_terms, 
                                         split="ONTOLOGY")
   
   plotREAC +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 40)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free", space = "free") +
-    #Coord_flip() +
     custom_ggtheme +
-    theme(#axis.text.x = element_text(angle = 90,vjust = 0.5,hjust = 1),
-      legend.position = "top",
-      legend.box="horizontal",
-      #legend.margin=margin(0,0,0,0),
-      plot.margin = margin(0,0,0,0),
-      legend.box.margin=margin(b = -9)) + 
+    theme(legend.position = "top",
+          legend.box="horizontal") + 
     scale_size(range = c(1, 5))+
     guides(colour = guide_legend(title = "q: "),
            size = guide_legend(title = "Gene count: "))
   
-  ggplot2::ggsave(paste0(figures_path, "/reactome_enrichment_msr.png"), width = 180, height = 180, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figures_path, "/AD_Control_reactome_enrichment_MSR_",category_terms,".png"), 
+                  width = 180, height = 180, units = "mm", dpi = 300)
 }
 
 
