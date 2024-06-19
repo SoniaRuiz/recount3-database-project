@@ -1,11 +1,12 @@
 library(tidyverse)
 library(GenomicRanges)
 library(DBI)
+library(doParallel)
 
 ####################################################
 ## CONNECT TO THE SPLICING DATABASE ################
 ####################################################
-
+## source("/home/sruiz/PROJECTS/recount3-database-project/analysis.R")
 
 ## CONNECT TO THE DATABASE ------------------------------
 
@@ -13,16 +14,36 @@ setwd(normalizePath("."))
 # setwd(normalizePath("/mnt/PROJECTS/recount3-database-project/"))
 
 gtf_version <- 105
-supportive_reads <- 1
+
+
 #project_id <- "SRP058181" 
-project_id <- "SRP100948"
-project_name <- paste0(project_id, "_", supportive_reads, "read")
+#case_type <- "PD"
+#control_type <- "control"
+
+# project_id <- "SRP100948"
+# case_type <- "AD"
+# control_type <- "control"
+
+
+# project_id <- "OV"
+# case_type <- "AD"
+# control_type <- "control"
+
+
+#main_project_identifier <- "TCGA"
+main_project_identifier <- "SRP100948"
+supportive_reads <- 1
+data_subsample <- F
+project_name <- paste0(main_project_identifier, "_", supportive_reads, "read_subsample", data_subsample) #SRP100948_
+project_name <- paste0(main_project_identifier, "_", supportive_reads, "read")
 
 database_folder <- paste0(getwd(), "/database/", project_name, "/", gtf_version, "/")
 results_folder <- paste0(getwd(), "/results/", project_name, "/", gtf_version, "/")
 
 results_path <- paste0(results_folder, "/_paper/results/")
+dir.create(path = results_path, recursive = T)
 figures_path <- paste0(results_folder, "/_paper/figures/")
+dir.create(path = figures_path, recursive = T)
 
 
 database_path <- paste0(database_folder, "/", project_name, ".sqlite")
@@ -35,14 +56,24 @@ dbListTables(con)
 ## QUERY MASTER TABLES 
 
 query = paste0("SELECT * FROM 'metadata'")
-df_metadata <- dbGetQuery(con, query) %>% distinct(external_id, .keep_all = T) %>% as_tibble()
+df_metadata <- dbGetQuery(con, query) %>% distinct(sample_id, .keep_all = T) %>% as_tibble()
 all_projects <- df_metadata$SRA_project %>% unique
+
+
+## GET INTRON DATA
 
 query <- paste0("SELECT * FROM 'intron'")
 master_introns <- dbGetQuery(con, query) %>% as_tibble()
 
+
+## GET NOVEL DATA
+
 query <- paste0("SELECT * FROM 'novel'")
 master_novel_junctions <- dbGetQuery(con, query) %>% as_tibble()
+
+
+
+## GET MASTER TABLES DATA
 
 query <- paste0("SELECT * FROM 'transcript'")
 master_transcripts <- dbGetQuery(con, query) %>% as_tibble()
@@ -62,15 +93,15 @@ get_mode <- function(data) {
 }
 
 
-custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
+custom_ggtheme <-  theme(text = element_text(size = 9, family="Arial", colour = "black"),
                          axis.ticks = element_line(colour = "black"),
-                         axis.text = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.text = element_text(size = 9, family="Arial", colour = "black"),
                          axis.line = element_line(colour = "black"),
-                         axis.title = element_text(size = 7, family="Arial", colour = "black"),
-                         axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
-                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 0.5, vjust = 0.5),
-                         strip.text = element_text(size = 7, family="Arial", colour = "black"),
-                         legend.text = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.title = element_text(size = 9, family="Arial", colour = "black"),
+                         axis.text.y = element_text(size = 9, family="Arial", colour = "black"),
+                         axis.text.x = element_text(size = 9, family="Arial", colour = "black", hjust = 0.5, vjust = 0.5),
+                         strip.text = element_text(size = 9, family="Arial", colour = "black"),
+                         legend.text = element_text(size = 8, family="Arial", colour = "black"),
                          legend.position = "top",
                          legend.box = "vertical")
 
@@ -167,6 +198,104 @@ dummie_test <- function() {
   }
 }
 
+index_database <- function() {
+  
+  
+  ## INTRON TABLE -----------------------------------------------------------------
+  
+  
+  ## verify indexes exist on 'intron' master table
+  query <- paste0("SELECT * FROM 'sqlite_master' 
+                WHERE tbl_name = 'intron'
+                AND name = 'index_intron_coord'")
+  
+  if (nrow(dbGetQuery(con, query)) == 0) {
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_intron_coord' ON 'intron'(ref_coordinates)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+  }
+  
+  
+  
+  ## NOVEL TABLE -----------------------------------------------------------------
+  
+  
+  ## verify indexes exist on 'novel' master table
+  query <- paste0("SELECT * FROM 'sqlite_master' WHERE tbl_name = 'novel' AND name = 'index_novel'")
+  
+  if ( nrow(dbGetQuery(con, query)) == 0 ) {
+    
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_novel' ON 'novel'(ref_junID,novel_junID)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    
+  }
+  
+  
+  ## verify indexes exist on 'novel' master table
+  query <- paste0("SELECT * FROM 'sqlite_master' WHERE tbl_name = 'novel' AND name = 'index_novel_coord'")
+  
+  if ( nrow(dbGetQuery(con, query)) == 0 ) {
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_novel_coord' ON 'novel'(novel_coordinates)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    
+  }
+  
+  
+  ## TRANSCRIPT TABLE -----------------------------------------------------------------
+  
+  query <- paste0("SELECT * FROM 'sqlite_master' WHERE tbl_name = 'transcript' AND name = 'index_transcript_id'")
+  
+  if ( nrow(dbGetQuery(con, query)) == 0 ) {
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_transcript_id' ON 'transcript'(id)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    
+  }
+  
+  
+  query <- paste0("SELECT * FROM 'sqlite_master' WHERE tbl_name = 'transcript' AND name = 'index_transcript_ensembl_id'")
+  
+  if ( nrow(dbGetQuery(con, query)) == 0 ) {
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_transcript_ensembl_id' ON 'transcript'(transcript_id)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    
+  }
+  
+  
+  ## GENE TABLE -----------------------------------------------------------------
+  
+  ## verify indexes exist on 'gene' master tableg
+  query <- paste0("SELECT * FROM 'sqlite_master' WHERE tbl_name = 'gene' AND name = 'index_gene_id'")
+  
+  if ( nrow(dbGetQuery(con, query)) == 0 ) {
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_gene_id' ON 'gene'(id)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    
+  }
+  
+  ## verify indexes exist on 'gene' master tableg
+  query <- paste0("SELECT * FROM 'sqlite_master' WHERE tbl_name = 'gene' AND name = 'index_gene_ensembl_id'")
+  
+  if ( nrow(dbGetQuery(con, query)) == 0 ) {
+    
+    query <- paste0("CREATE UNIQUE INDEX 'index_gene_ensembl_id' ON 'gene'(gene_id)");
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    
+  }
+  
+  
+}
 
 #' Title
 #' Obtain general stats about the database
@@ -180,17 +309,15 @@ get_database_stats <- function() {
   ## Methods: number of samples by RIN number
   df_metadata %>% nrow() 
   
-  df_metadata %>%
-    filter(rin >= 8) %>% nrow()
-  df_metadata %>%
-    filter(rin >= 7) %>% nrow()
-  df_metadata %>%
-    filter(rin >= 6) %>% nrow()
   
-  #if ( df_metadata %>% filter(rin < 6) %>% nrow() > 1 ) {
-  #  print("ERROR! Some of the samples considered present a RIN number lower than 6!")
-  #  break;
-  #}
+  if ( any( names(df_metadata) == "rin" ) ) {
+    df_metadata %>%
+      filter(rin >= 8) %>% nrow()
+    df_metadata %>%
+      filter(rin >= 7) %>% nrow()
+    df_metadata %>%
+      filter(rin >= 6) %>% nrow()
+  }
   
 
   master_introns %>% head()
@@ -225,6 +352,7 @@ plot_metadata <- function() {
   
 
   
+  
   # df_metadata$cluster = factor(df_metadata$cluster, 
   #                                   levels = c("control", "AD"))
   ## Num samples
@@ -242,30 +370,31 @@ plot_metadata <- function() {
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) +
     theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
     scale_fill_manual(values = c("#bfbfbf","#666666"),
-                      breaks = c("control", "AD"),
-                      label = c("Control", "AD")) +
+                      breaks = c("control", case_type),
+                      label = c("Control", case_type)) +
     custom_ggtheme
   
   plot_num_samples
   
+  if ( any(names(df_metadata) == "gender") ) {
+    ## Gender
+    plot_gender <- ggplot(df_metadata %>% 
+                            mutate(gender = gender %>% as.character()) %>%
+                            dplyr::count(cluster, gender)) +
+      geom_bar(aes(y = cluster, x = n, group = gender, fill = gender), alpha = 0.8,
+               stat = "identity", position = "dodge") + 
+      #facet_grid(~cluster)+
+      theme_light() +
+      labs(y = "", x = "Num. samples" ) +
+      scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
+      guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
+      theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
+      custom_ggtheme
+    
+    plot_gender
   
-  ## Gender
-  plot_gender <- ggplot(df_metadata %>% 
-                          mutate(gender = gender %>% as.character()) %>%
-                          dplyr::count(cluster, gender)) +
-    geom_bar(aes(y = cluster, x = n, group = gender, fill = gender), alpha = 0.8,
-             stat = "identity", position = "dodge") + 
-    #facet_grid(~cluster)+
-    theme_light() +
-    labs(y = "", x = "Num. samples" ) +
-    scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
-    guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
-    theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
-    custom_ggtheme
-  
-  plot_gender
-  
-  if (all(is.na(df_metadata$rin))) {
+  }
+  if (  any(names(df_metadata) == "age") ) {
     ## AGE
     plot_age <- ggplot(df_metadata ) +
       geom_density(aes(x = age, fill = cluster), alpha = 0.7) + 
@@ -274,10 +403,11 @@ plot_metadata <- function() {
       scale_fill_hue() +
       guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
       scale_fill_manual(values = c("#bfbfbf","#666666"),
-                        breaks = c("control", "AD"),
-                        label = c("Control", "AD")) +  
+                        breaks = c("control", case_type),
+                        label = c("Control", case_type)) +  
       custom_ggtheme
-  } else {
+  }
+  if ( any(names(df_metadata) == "rin") ) {
     ## RIN
     plot_rin <- ggplot(df_metadata ) +
       geom_density(aes(x = rin, fill = cluster), alpha = 0.7) + 
@@ -286,8 +416,8 @@ plot_metadata <- function() {
       scale_fill_hue() +
       guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
       scale_fill_manual(values = c("#bfbfbf","#666666"),
-                        breaks = c("control", "AD"),
-                        label = c("Control", "AD")) +  
+                        breaks = c("control", case_type),
+                        label = c("Control", case_type)) +  
       custom_ggtheme
   }
   
@@ -301,26 +431,31 @@ plot_metadata <- function() {
     labs(x = "Mapped Read Count" ) +
     guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
     scale_fill_manual(values = c("#bfbfbf","#666666"),
-                      breaks = c("control", "AD"),
-                      label = c("Control", "AD")) +   
+                      breaks = c("control", case_type),
+                      label = c("Control", case_type)) +   
     custom_ggtheme
   
   
   plot_read_depth
   
-  if (!exists("plot_rin")) {
+  if ( exists("plot_age") ) {
     ggpubr::ggarrange(plot_num_samples,
                       plot_gender,
                       plot_age,
                       plot_read_depth,
                       labels = c("a","b","c","d"))
-  } else {
+  } else if ( exists("plot_rin") ) {
     ggpubr::ggarrange(plot_num_samples,
                       plot_gender,
                       plot_rin,
                       plot_read_depth,
                       labels = c("a","b","c","d"))
+  } else {
+    ggpubr::ggarrange(plot_num_samples,
+                      plot_read_depth,
+                      labels = c("a","b"))
   }
+  
  
   
   dir.create(path = figures_path, recursive = T,showWarnings = T)
@@ -339,13 +474,15 @@ plot_metadata <- function() {
 get_common_subsample_introns <- function() {
   
   
+  print("Getting common introns between sample cluster...")
+  
   clusters <- df_metadata$cluster %>% unique
   
   ###############################
   ## GET DATA FOR CONTROL
   ###############################
   
-  cluster_id <- "Control"
+  cluster_id <- control_type 
   
   print(paste0(Sys.time(), " - ", project_name, " - ", cluster_id))
   
@@ -359,19 +496,16 @@ get_common_subsample_introns <- function() {
   introns_control <- dbGetQuery(con, query) %>% as_tibble()
   introns_control %>% nrow()
   
-  introns_control <- rbind(introns, introns_control)
+  introns_control <- rbind(introns, introns_control) %>% distinct(ref_junID, .keep_all = T)
  
+  
   
   ###############################
   ## GET DATA FOR CASES
   ###############################
   
-  if (project_id == "SRP100948") {
-    cluster_id <- "AD"  
-  } else {
-    cluster_id <- "PD"
-  }
- 
+  cluster_id <- case_type
+  
   
   print(paste0(Sys.time(), " - ", project_name, " - ", cluster_id))
   
@@ -387,27 +521,23 @@ get_common_subsample_introns <- function() {
   
   introns_case <- rbind(introns, introns_case)
   
+  case_type <- cluster_id
   
   ##############################################################################
   ## TIDY DATAFRAME - ONLY USE COMMON INTRONS
   ##############################################################################
   
-  common_introns <- intersect(introns_case$ref_junID,
-                              introns_control$ref_junID) %>% unique()
+  common_introns <- intersect(introns_case$ref_junID, introns_control$ref_junID) %>% unique()
   common_introns %>% length()
   
-  rbind(introns_case %>%
-          mutate(sample_type = "AD"), 
-        introns_control %>%
-          mutate(sample_type = "control"))  %>%
-    filter(ref_junID %in% common_introns) %>%
+  rbind(introns_case %>% mutate(sample_type = case_type), 
+        introns_control %>% mutate(sample_type = control_type)) %>% 
+    filter(ref_junID %in% common_introns) %>% 
     dplyr::count(sample_type)
   
   ## TIDY DATAFRAME
-  df_introns_tidy <- rbind(introns_case %>%
-                             mutate(sample_type = "AD"), 
-                           introns_control %>%
-                             mutate(sample_type = "control"))  %>%
+  df_introns_tidy <- rbind(introns_case %>% mutate(sample_type = case_type), 
+                           introns_control %>% mutate(sample_type = control_type))  %>%
     filter(ref_junID %in% common_introns) %>%
     group_by(sample_type) %>%
     mutate(mean_coverage = (ref_sum_counts/ref_n_individuals) %>% log10()) %>%
@@ -416,14 +546,15 @@ get_common_subsample_introns <- function() {
   df_introns_tidy
   
   
-  df_introns_tidy %>%
-    dplyr::count(sample_type)
+  df_introns_tidy %>% dplyr::count(sample_type)
   
+  if ( df_introns_tidy %>% dplyr::count(ref_junID) %>% filter(n == 1) %>% nrow() > 0 ) {
+    print("ERROR. Common annotated introns should appear only once per sample cluster.")
+  }
   
   ##########################################################
   ## PLOT COVERAGE OF SHARED INTRONS BEFORE SUBSAMPLING
   ##########################################################
-  
   
   plot_BS <- ggplot(data = df_introns_tidy) +
     geom_density(mapping = aes(x = mean_coverage, fill = sample_type), alpha = 0.8) +
@@ -433,8 +564,8 @@ get_common_subsample_introns <- function() {
     xlab("log10 mean expression level") +
     scale_fill_manual(name = "Sample group: ",
                       values = c("#bfbfbf","#666666"),
-                      breaks = c("control", "AD"),
-                      label = c("Control", "AD")) +
+                      breaks = c(control_type, case_type ),
+                      label = c(control_type, case_type )) +
     ylim(c(0, 1))+
     xlim(c(0, 3))
   
@@ -445,28 +576,29 @@ get_common_subsample_introns <- function() {
   #### START SUBSAMPLIING
   #####################################
   
-  if ( file.exists(paste0(results_folder, "/common_subsampled_introns.rds")) ) {
+  if ( file.exists(paste0(results_path, "/common_subsampled_introns_seed1000.rds")) ) {
     
-    subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
+    subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds"))
     
   } else {
     
     set.seed(1000)
-    print(paste0(Sys.time(), " - starting subsampling ... "))
+    print(paste0(Sys.time(), " - start subsampling ... "))
     
     ## Subsampling introns to control by similarity in mean read coverage
     m.out <- MatchIt::matchit(sample_type ~ mean_coverage,
-                              data = df_introns_tidy %>%
-                                mutate(sample_type = sample_type %>% as.factor()),
+                              data = df_introns_tidy %>% mutate(sample_type = sample_type %>% as.factor()),
                               distance = df_introns_tidy$mean_coverage,
                               method = "nearest",
-                              caliper = c(mean_coverage = 0.005),
+                              caliper = c(mean_coverage = .005),
                               std.caliper = FALSE)
     subsample <- MatchIt::match.data(m.out)
     subsample %>% dplyr::count(sample_type)
+    subsample %>% group_by(sample_type) %>% distinct(ref_junID) %>% ungroup() %>% dplyr::count(sample_type)
     
+    dir.create(path = results_path, recursive = T,showWarnings = T)
     saveRDS(object = subsample,
-            file = paste0(results_folder, "/common_subsampled_introns_seed1000.rds"))
+            file = paste0(results_path, "/common_subsampled_introns_seed1000.rds"))
     
   }
   
@@ -488,8 +620,8 @@ get_common_subsample_introns <- function() {
     xlab("log10 mean expression level") +
     scale_fill_manual(name = "Sample group: ",
                       values = c("#bfbfbf","#666666"),
-                      breaks = c("control", "AD"),
-                      label = c("Control", "AD")) +
+                      breaks = c(control_type, case_type ),
+                      label = c(control_type, case_type )) +
     ylim(c(0, 1))+
     xlim(c(0, 3))
   plot_AS
@@ -519,8 +651,8 @@ get_common_subsample_introns <- function() {
 plot_unique_junctions <- function() {
   
   ## Load common introns
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns_seed1000.rds")) %>%
-    dplyr::select(-distance,-weights,-subclass)
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds")) %>%
+    dplyr::select(-distance,-weights,-subclass) 
   
   common_introns_subsample$ref_junID %>% unique() %>% length()
   common_introns_subsample %>% dplyr::count(sample_type)
@@ -529,16 +661,20 @@ plot_unique_junctions <- function() {
     
     print(cluster_id)
     
+    
+    
     ####################
     ## GET THE INTRONS
     ####################
     
-    query <- paste0("SELECT DISTINCT ref_junID FROM '", 
+    query <- paste0("SELECT DISTINCT ref_junID 
+                    FROM '", 
                     cluster_id, "_", project_id, "_nevermisspliced'")
     introns <- dbGetQuery(con, query) %>% as_tibble()
     
     
-    query <- paste0("SELECT DISTINCT ref_junID FROM '", 
+    query <- paste0("SELECT DISTINCT ref_junID 
+                    FROM '", 
                     cluster_id, "_", project_id, "_misspliced'")
     introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
     
@@ -561,9 +697,8 @@ plot_unique_junctions <- function() {
     
 
     novel_junctions <- novel_junctions %>%
-      inner_join(y = master_novel_junctions %>% 
-                   dplyr::select(novel_junID,novel_type),
-                by = "novel_junID") %>% 
+      inner_join(y = master_novel_junctions %>% dplyr::select(novel_junID,novel_type),
+                 by = "novel_junID") %>% 
       as_tibble() %>%
       ## Only common, subsampled introns
       filter(ref_junID %in%  (common_introns_subsample %>%
@@ -623,7 +758,7 @@ plot_unique_junctions <- function() {
          aes(x = cluster, y = prop, fill =  type)) + 
     geom_bar(stat="identity", position = "stack")+
     geom_text(aes(label=prop_label), vjust=2, position = "stack", 
-              color="white", size=2.5, fontface = "bold") +
+              color="white", size=4, fontface = "bold") +
     theme_light() +
     ylab("% unique junctions") +
     xlab("") +
@@ -657,14 +792,17 @@ plot_unique_junctions <- function() {
 plot_unique_reads <- function() {
   
   ## Load common introns
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds")) %>%
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds")) %>%
     dplyr::select(-distance,-weights,-subclass)
   
   
   common_introns_subsample$ref_junID %>% unique() %>% length()
   common_introns_subsample %>% dplyr::count(sample_type)
   
+  
+  
   df_mean_counts <- map_df(all_clusters, function(cluster_id) {
+    
     
     print(cluster_id)
     
@@ -680,14 +818,11 @@ plot_unique_reads <- function() {
     
     query <- paste0("SELECT DISTINCT ref_junID, ref_sum_counts, ref_n_individuals 
                     FROM '", cluster_id, "_", project_id, "_misspliced'")
-    introns <- rbind(introns, dbGetQuery(con, query) %>% 
-                       as_tibble())
+    introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
 
     ## Only common, subsampled introns
     introns <- introns %>%
-      filter(ref_junID %in% (common_introns_subsample %>%
-                               filter(sample_type == cluster_id) %>%
-                               pull(ref_junID)))
+      filter(ref_junID %in% (common_introns_subsample %>% filter(sample_type == cluster_id) %>% pull(ref_junID)))
     
     ###########################
     ## GET THE NOVEL JUNCTIONS
@@ -703,9 +838,9 @@ plot_unique_reads <- function() {
                  by = "novel_junID") %>% 
       as_tibble() %>%
       ## Only NOVEL READS FROM common, subsampled introns
-      filter(ref_junID %in% (common_introns_subsample %>%
-                               filter(sample_type == cluster_id) %>%
-                               pull(ref_junID)))
+      filter(ref_junID %in% introns$ref_junID)
+    
+    
     
     ###########################
     ## GET THE PROPORTIONS
@@ -745,10 +880,11 @@ plot_unique_reads <- function() {
     acceptor_p = acceptor * 100 / (annotated + acceptor + donor)
     donor_p = donor * 100 / (annotated + acceptor + donor)
     
+    
     return(data.frame(cluster = cluster_id,
                       type = c("annotated","acceptor", "donor"),
                       prop = c(annotated_p, acceptor_p, donor_p),
-                      sum_counts = c(annotated, acceptor, donor)))
+                      sum_counts = c(annotated, acceptor, donor)) )
     
   })
   
@@ -806,11 +942,12 @@ plot_unique_reads <- function() {
 #' @examples
 plot_distances <- function() {
   
+  
   limit_bp <- 30
   
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds")) %>%
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds")) %>%
     dplyr::select(-distance,-weights,-subclass)
-  
+
   
   
   ###############################
@@ -856,10 +993,14 @@ plot_distances <- function() {
     scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
                        breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
     scale_fill_manual(values = c("#9ce2c0","#35B779FF","#e99cfc", "#8c04ae"),
-                      breaks = c("control_novel_donor", "AD_novel_donor","control_novel_acceptor", "AD_novel_acceptor"),
-                      label = c("Donor - Control", "Donor - AD","Acceptor - Control", "Acceptor - AD")) + 
+                      breaks = c("control_novel_donor", paste0(case_type, "_novel_donor"),
+                                 "control_novel_acceptor", paste0(case_type, "_novel_acceptor")),
+                      label = c("Donor - Control", paste0("Donor - ", case_type), 
+                                "Acceptor - Control", 
+                                paste0("Acceptor - ",case_type))) + 
     guides(fill = guide_legend(title = NULL, ncol = 4, nrow = 1 )) +
-    custom_ggtheme +
+    custom_ggtheme  +
+    
     theme(legend.position = "none") 
   plot_distances
   
@@ -867,15 +1008,30 @@ plot_distances <- function() {
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 55),  size = 3, label = "exon") +
+    geom_text(aes(x = 15, y = 55),  size = 4, label = "exon") +
     geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15, y = 70),  size = 3, label = "intron") +
+    geom_text(aes(x = -15, y = 70),  size = 4, label = "intron") +
     theme_void()
   
   
   plot_distances <- plot_distances / (distance_rectangle + distance_rectangle ) + 
     patchwork::plot_layout(heights = c(8, 1))
+  
+  
+  
+  custom_ggtheme <-  theme(text = element_text(size = 12, family="Arial", colour = "black"),
+                           axis.ticks = element_line(colour = "black"),
+                           axis.text = element_text(size = 12, family="Arial", colour = "black"),
+                           axis.line = element_line(colour = "black"),
+                           axis.title = element_text(size = 12, family="Arial", colour = "black"),
+                           axis.text.y = element_text(size = 12, family="Arial", colour = "black"),
+                           axis.text.x = element_text(size = 12, family="Arial", colour = "black", hjust = 0.5, vjust = 0.5),
+                           strip.text = element_text(size = 12, family="Arial", colour = "black"),
+                           legend.text = element_text(size = 12, family="Arial", colour = "black"),
+                           legend.position = "top",
+                           legend.box = "vertical")
+  
   plot_distances
   
   ggplot2::ggsave(paste0(figures_path, "/distances.png"), 
@@ -893,7 +1049,7 @@ plot_distances <- function() {
 #' @examples
 plot_modulo <- function() {
   
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds"))
   
   common_introns_subsample %>%
     dplyr::count(sample_type)
@@ -981,7 +1137,7 @@ plot_modulo <- function() {
     xlab("") +
     ylab("% of junctions") +
     geom_text(aes(label=freq_label), vjust=2, position = "stack", 
-              color="white", size=2.5, fontface = "bold") +
+              color="white", size=4, fontface = "bold") +
     ggsci::scale_fill_npg(breaks=c('0', '1', '2')) +
     theme_light() +
     custom_ggtheme +
@@ -991,7 +1147,7 @@ plot_modulo <- function() {
   
   
   ggplot2::ggsave(paste0(figures_path, "/modulo.png"), 
-                  width = 60, height = 70, units = "mm", dpi = 300)
+                  width = 80, height = 70, units = "mm", dpi = 300)
   
 }
 
@@ -1006,7 +1162,7 @@ plot_modulo <- function() {
 test_MSR_differences <- function()  {
   
   
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds"))
   common_junID <- common_introns_subsample %>%
     dplyr::count(ref_junID) %>%
     filter(n == 2) %>%
@@ -1014,7 +1170,9 @@ test_MSR_differences <- function()  {
   
   
   common_introns_subsample_tidy <- common_introns_subsample %>%
-    filter(ref_junID %in% common_junID)
+    filter(ref_junID %in% common_junID) #%>%
+  #  mutate( sample_type = sample_type %>% as.character() ) %>%
+  #  mutate( sample_type = ifelse(sample_type == "AD", "PD", sample_type))
   
   common_introns_subsample_tidy_MSRD <- common_introns_subsample_tidy %>%
     dplyr::select(ref_junID, MSR_D, sample_type) %>%
@@ -1029,18 +1187,18 @@ test_MSR_differences <- function()  {
   #########################################
   
   
-  common_introns_subsample_tidy %>% filter(sample_type == "AD") %>% pull(MSR_D) %>% summary
-  common_introns_subsample_tidy %>% filter(sample_type == "control") %>% pull(MSR_D) %>% summary
+  common_introns_subsample_tidy %>% filter(sample_type == case_type) %>% pull(MSR_D) %>% summary
+  common_introns_subsample_tidy %>% filter(sample_type == control_type) %>% pull(MSR_D) %>% summary
   
   
-  wilcox.test(x = common_introns_subsample_tidy %>% filter(sample_type == "AD") %>% pull(MSR_D),
-              y = common_introns_subsample_tidy %>% filter(sample_type == "control") %>% pull(MSR_D),
+  wilcox.test(x = common_introns_subsample_tidy %>% filter(sample_type == case_type) %>% pull(MSR_D),
+              y = common_introns_subsample_tidy %>% filter(sample_type == control_type) %>% pull(MSR_D),
               alternative = "greater",
               paired = T,
               correct = T)
   
-  wilcox.test(x = common_introns_subsample_tidy_MSRD %>% pull(AD),
-              y = common_introns_subsample_tidy_MSRD %>% pull(control),
+  wilcox.test(x = common_introns_subsample_tidy_MSRD %>% pull(all_of(case_type)),
+              y = common_introns_subsample_tidy_MSRD %>% pull(all_of(control_type)),
               alternative = "greater",
               paired = T,
               correct = T)
@@ -1057,21 +1215,21 @@ test_MSR_differences <- function()  {
   ########################################
   
   
-  wilcox.test(x = common_introns_subsample_tidy %>% filter(sample_type == "AD") %>% pull(MSR_A),
-              y = common_introns_subsample_tidy %>% filter(sample_type == "control") %>% pull(MSR_A),
+  wilcox.test(x = common_introns_subsample_tidy %>% filter(sample_type == case_type) %>% pull(MSR_A),
+              y = common_introns_subsample_tidy %>% filter(sample_type == control_type) %>% pull(MSR_A),
               alternative = "greater",
               paired = T,
               correct = T)
   
-  wilcox.test(x = common_introns_subsample_tidy_MSRA %>% pull(AD),
-              y = common_introns_subsample_tidy_MSRA %>% pull(control),
+  wilcox.test(x = common_introns_subsample_tidy_MSRA %>% pull(all_of(case_type)),
+              y = common_introns_subsample_tidy_MSRA %>% pull(all_of(control_type)),
               alternative = "greater",
               paired = T,
               correct = T)
   
   
-  common_introns_subsample_tidy %>% filter(sample_type == "AD") %>% pull(MSR_A) %>% summary
-  common_introns_subsample_tidy %>% filter(sample_type == "control") %>% pull(MSR_A) %>% summary
+  common_introns_subsample_tidy %>% filter(sample_type == case_type) %>% pull(MSR_A) %>% summary
+  common_introns_subsample_tidy %>% filter(sample_type == control_type) %>% pull(MSR_A) %>% summary
   
   rstatix::wilcox_effsize(data = common_introns_subsample_tidy_MSRA %>% 
                             gather(key = ref_junID, value = type) %>%
@@ -1086,10 +1244,10 @@ test_MSR_differences <- function()  {
   #######################################
   
   common_introns_subsample_column <- common_introns_subsample_tidy %>% 
-    filter(sample_type == "AD") %>% 
+    filter(sample_type == case_type) %>% 
     dplyr::select(ref_junID, MSR_A_AD = MSR_A) %>%
     inner_join(y = common_introns_subsample_tidy %>% 
-                 filter(sample_type == "control") %>% 
+                 filter(sample_type == control_type) %>% 
                  dplyr::select(ref_junID, MSR_A_control = MSR_A) )
   
   wilcox.test(x = common_introns_subsample_column$MSR_A_AD,
@@ -1112,10 +1270,10 @@ test_MSR_differences <- function()  {
 #' @examples
 plot_MSR_by_biotype <- function() {
   
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds"))
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds"))
   common_junID <- common_introns_subsample %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == 2) %>%
+     #dplyr::count(ref_junID) %>%
+    #filter(n == 2) %>%
     pull(ref_junID)
   
   
@@ -1237,6 +1395,7 @@ plot_MSR_by_biotype <- function() {
   print(paste0(Sys.time(), " - saving plot..."))
   file_name <- paste0(figures_folder, "/panel4bc")
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+  
 }
 
 
@@ -1250,7 +1409,7 @@ plot_MSR_by_biotype <- function() {
 plot_GO_KEGG__REACTOME_terms <- function() {
   
   ## Load common introns
-  common_introns_subsample <- readRDS(file = paste0(results_folder, "/common_subsampled_introns.rds")) %>%
+  common_introns_subsample <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds")) %>%
     dplyr::select(-distance,-weights,-subclass)
   
   common_junID <- common_introns_subsample %>%
@@ -1263,11 +1422,11 @@ plot_GO_KEGG__REACTOME_terms <- function() {
   
   
   common_introns_subsample_column <- common_introns_subsample_tidy %>% 
-    filter(sample_type == "AD") %>% 
+    filter(sample_type == case_type) %>% 
     dplyr::select(ref_junID, MSR_D_AD = MSR_D, MSR_A_AD = MSR_A) %>% 
     distinct(ref_junID, .keep_all = T) %>%
     inner_join(y = common_introns_subsample_tidy %>% 
-                 filter(sample_type == "control")  %>% 
+                 filter(sample_type == control_type)  %>% 
                  dplyr::select(ref_junID, MSR_D_control = MSR_D, MSR_A_control = MSR_A) %>% 
                  distinct(ref_junID, .keep_all = T),
                by = "ref_junID")
@@ -1318,11 +1477,14 @@ plot_GO_KEGG__REACTOME_terms <- function() {
   )
   
   
-  category_terms <-25
+  category_terms <-20
+  
   clusterProfiler::dotplot(ego_MSRA %>%
                              filter(ONTOLOGY == "CC") %>%
                              filter(str_detect(string = Description,negate = T,
-                                               pattern = "with bulged")) %>%
+                                               pattern = "with bulged"),
+                                    str_detect(string = Description,negate = T,
+                                               pattern = "plasma membrane")) %>%
                              filter(str_detect(string = Description,negate = T,
                                                pattern = "ubiquitin-dependent")), 
                            x = "GeneRatio", 
@@ -1332,15 +1494,18 @@ plot_GO_KEGG__REACTOME_terms <- function() {
     xlab("Gene Ratio") +
     ggforce::facet_col(ONTOLOGY~., scales = "free_y", space = "free") +
     custom_ggtheme+
+    
     theme(#axis.text.x = element_text(angle = 90, vjust = 0.5),
-          legend.position = "top",
-          legend.box="horizontal",
+          legend.position = "right",
+          #legend.box="horizontal",
+          
           plot.margin = margin(t = -5,b = 0,l = 2,r = 2),
           legend.margin=margin(t = -5,b = -5,0,0),
           legend.box.margin=margin(t = -5,r = -5,b = -5,l = -5)) + 
     scale_size(range = c(1, 5)) +
+    
     guides(size = guide_legend(title = "Gene Count: "),
-           colour = guide_legend(title = "q: "))               
+           colour = guide_legend(title = "q: "))    
   
   
   ggplot2::ggsave(paste0(figures_path, "/AD_Control_go_enrichment_MSR_",category_terms,".png"), 
@@ -1444,8 +1609,406 @@ plot_GO_KEGG__REACTOME_terms <- function() {
 }
 
 
+
+##################################
+## MSR NORMALISED BY TPM OF RBPs
+##################################
+
+
+AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
+  
+  
+  
+  local_results_folder <- paste0(results_folder, "/", all_projects, "/MSR_normalisation_by_TPM/")
+  dir.create(path = local_results_folder)
+  
+  
+  do_paired_test <- T
+  
+  ################################
+  ## LOAD RBPs OF INTEREST
+  ################################
+  
+  # Only get genes with splicing regulator, spliceosome, Exon.Junction.Complex and NMD functions
+  
+  all_RBPs <- (xlsx::read.xlsx(file = paste0(base_folder,'/dependencies/RBPs_subgroups.xlsx'),
+                               header = TRUE, sheetIndex = 1) %>% as_tibble() %>%
+                 mutate(NMD = 0))[-116,]
+  
+  all_NMDs <- data.frame(name = c("SMG1", "SMG5", "SMG6", "SMG7", 
+                                  "UPF1", "UPF2", "UPF3A"),
+                         id = c("ENSG00000157106", "ENSG00000198952", "ENSG00000070366", "ENSG00000116698", 
+                                "ENSG00000005007", "ENSG00000151461", "ENSG00000169062"),
+                         Splicing.regulation = c(0,0,0,0,0,0,0),
+                         Spliceosome = c(0,0,0,0,0,0,0),
+                         Exon.Junction.Complex = c(0,0,0,0,0,0,0),
+                         NMD = c(1,1,1,1,1,1,1))
+  
+  
+  all_RBPs_tidy <- rbind(all_NMDs,all_RBPs)
+  
+
+
+  for (project_id in all_projects) {
+    
+    # project_id = all_projects[1]
+
+    message(project_id, "...")
+    
+    
+    if ( !file.exists(paste0(local_results_folder, "/", project_id, "_all_effect_size_normalised_TPM.rds")) || 
+         replace) {
+      
+      
+      ################################
+      ## CALCULATE MSR VALUES 
+      ## NORMALISED BY NMD/TPM VALUES
+      ################################
+      
+      MSR_normalised <- AD_control_normalise_MSR_values_by_TPM(project.id = project_id,
+                                                               gene.list = all_RBPs_tidy,
+                                                               results.folder = local_results_folder)
+      
+      
+      
+      ################################
+      ## CALCULATE AGE EFFECT SIZES 
+      ## USING MSR NORMALISED DATA
+      ################################
+      
+      message("Calculating age effect sizes using MSR normalised data....")
+      
+      
+      
+      gene_list <- c(MSR_normalised$MSR_D_normalised$gene_normalised %>% unique %>% sort,
+                     MSR_normalised$MSR_A_normalised$gene_normalised %>% unique %>% sort) %>% unique()
+      
+      
+      doParallel::registerDoParallel(cores = 4)
+      effect_size_normalised_TPM <- foreach(j = seq(length(gene_list)), .combine = "rbind") %dopar% {
+        
+        gene = gene_list[j]
+        
+        # gene <- gene_list[1]
+        
+        message(gene, "....")
+        
+        
+        map_df(c("MSR Donor","MSR Acceptor"), function(MSR_type) {
+          
+          # MSR_type = "MSR Donor"
+          
+          message(MSR_type, "....")
+          
+          
+          if (MSR_type == "MSR Donor") {
+            MSR_normalised_data = MSR_normalised$MSR_D_normalised 
+          } else {
+            MSR_normalised_data = MSR_normalised$MSR_A_normalised
+          }
+          
+          MSR_normalised_data = MSR_normalised_data  %>%
+            filter(gene_normalised == gene)
+          
+          
+          ## Wilcoxon one-tailed test
+          wilcox_pval <- data.frame(pval = c((wilcox.test(x = MSR_normalised_data$control,
+                                                          y = MSR_normalised_data$AD,
+                                                          alternative = "less",
+                                                          paired = T))$p.value))
+          
+          
+          ## Wilcoxon effect size
+          message(MSR_type, " - Wilcoxon paired effect size test ....")
+          r_effect1 <- rstatix::wilcox_effsize(data = MSR_normalised_data %>%
+                                                 dplyr::select(ref_junID, control, AD) %>%
+                                                 gather(key = disease, value = MSR, -ref_junID) %>%
+                                                 mutate(disease = disease %>% as.factor()),
+                                               formula = MSR ~ disease,
+                                               paired = F) %>%
+            mutate(MSR_type = MSR_type, 
+                   project = project_id,
+                   gene_normalised = gene)
+          
+          
+          # ## Save results
+          # dir.create(path = paste0(local_results_folder, "/",project_id,"_paired",do_paired_test,"/"),
+          #            recursive = T)
+          # saveRDS(object = r_effect1 %>% cbind(wilcox_pval),
+          #         file = paste0(local_results_folder, "/",project_id,"_paired",do_paired_test,"/", 
+          #                       project_id,"_", gene, "_",MSR_type,"_effect_size_age_normalised_TPM.rds"))
+          
+          ## Return results
+          return(r_effect1 %>% cbind(wilcox_pval))
+          
+        })
+      } 
+      
+      
+      
+      saveRDS(object = effect_size_normalised_TPM %>%
+                inner_join(y = all_RBPs_tidy, by = c("gene_normalised" = "name")),
+              file = paste0(local_results_folder, "/", project_id,"_all_effect_size_normalised_TPM.rds"))
+      
+      
+      
+    } else {
+      effect_size_normalised_TPM <- readRDS(file = paste0(local_results_folder, 
+                                                          "/", project_id, "_all_effect_size_normalised_TPM.rds"))
+    }
+    
+    
+    ################################
+    ## PLOT AGE EFFECT SIZES 
+    ## USING MSR NORMALISED DATA
+    ################################
+    
+    AD_control_plot_effsize_MSR_normalised_by_TPM(effect.size.file.path = paste0(local_results_folder, "/", project_id, "_all_effect_size_normalised_TPM.rds"),
+                                                  figure.name = paste0(local_results_folder, "/", project_id, "_all_effect_size_normalised_TPM.png"))
+  }
+  
+  
+  
+  
+}
+
+
+AD_control_normalise_MSR_values_by_TPM <- function(project.id,
+                                                   gene.list,
+                                                   results.folder) {
+  
+  
+  
+  
+  if ( !file.exists(paste0(results.folder, "/",project.id,"_MSR_D_normalised_by_TPM.rds")) || 
+       !file.exists(paste0(results.folder, "/",project.id,"_MSR_A_normalised_by_TPM.rds")) ) {
+    
+    
+    
+    median_TPM_values_disease_groups <- map_df(c("AD","control"), function(cluster_id) {
+      
+      # cluster_id <- c("AD","control")[1]
+      
+      message(cluster_id, "...")
+  
+      
+      
+      ## 1. Calculate median TPM values corresponding to each RBP/NMD gene across the samples of each disease group
+      print(paste0(Sys.time(), " - ", cluster_id, " ... "))
+      
+      if (file.exists(paste0(base_folder, "/results/", project_name, "/", gtf_version, "/", project.id, "/tpm/",
+                             project.id, "_", cluster_id, "_tpm.rds"))) {
+        
+        
+        
+        local_TPM <- readRDS(file = paste0(base_folder,"/results/",project_name,"/", gtf_version, "/", project.id, "/tpm/",
+                                           project.id, "_", cluster_id, "_tpm.rds")) %>%
+          filter(gene_id %in% (gene.list$id) )
+        
+        
+        local_TPM_w_median <- local_TPM %>% 
+          rowwise() %>% 
+          #mutate(mean_TPM = mean( c_across(where(is.numeric)))) %>%
+          mutate(median_TPM = median( c_across(where(is.numeric)))) %>%
+          dplyr::select(gene_id, median_TPM)  %>%
+          inner_join(y = gene.list, by = c("gene_id"="id")) %>%
+          dplyr::rename(gene_name = name) %>%
+          dplyr::relocate(gene_name, .after = "gene_id")
+        
+        
+        # 2. Query database to get MSR values across age groups
+        con <- dbConnect(RSQLite::SQLite(), database_path)
+        query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_misspliced'")
+        tissue_introns <- dbGetQuery(con, query) %>% as_tibble()
+        
+        query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_nevermisspliced' " )
+        tissue_introns <- rbind(tissue_introns, dbGetQuery(con, query)) %>% as_tibble()
+        tissue_introns <- tissue_introns %>% distinct(ref_junID, .keep_all = T)
+        DBI::dbDisconnect(con)
+        
+        
+        # 3. Normalise MSR values per RBP/NMD gene in each disease group and tissue
+        normalised_TPM <- map_df(local_TPM_w_median$gene_name, function(gene) {
+          
+          message(gene, "...")
+          # gene <- local_TPM_w_median$gene_name[1]
+          
+          TPM <- local_TPM_w_median %>% filter(gene_name == gene) %>% pull(median_TPM)
+          
+          tissue_introns %>%
+            mutate(MSR_D_normalised = MSR_D/TPM,
+                   MSR_A_normalised = MSR_A/TPM) %>%
+            mutate(disease = cluster_id,
+                   gene_normalised = gene) %>%
+            return()
+          
+        })
+        
+        
+        normalised_TPM[which(!is.finite(normalised_TPM$MSR_D_normalised)),"MSR_D_normalised"] <- 0
+        normalised_TPM[which(!is.finite(normalised_TPM$MSR_A_normalised)),"MSR_A_normalised"] <- 0
+        
+        normalised_TPM %>% 
+          return()
+        
+        
+      } else {
+        return(NULL)
+      }   
+    })
+    
+    
+    ## 4. Get only the annotated introns overlapping the two disease groups
+    common_ref_junID <- median_TPM_values_disease_groups %>%
+      group_by(disease) %>%
+      distinct(ref_junID) %>%
+      ungroup() %>%
+      dplyr::count(ref_junID) %>%
+      filter(n==2) %>%
+      pull(ref_junID)
+    
+    
+    ## 5. Filter the results by common introns between the two disease groups
+    median_TPM_values_disease_groups_common_introns <- median_TPM_values_disease_groups %>%
+      filter(ref_junID %in% common_ref_junID) 
+    
+    
+    ## 6. Calculate MSR_D normalised values & save results
+    MSR_D_normalised <- median_TPM_values_disease_groups_common_introns %>%
+      dplyr::select(-c(MSR_D, MSR_A, MSR_A_normalised)) %>%
+      spread(key = disease, MSR_D_normalised)
+    saveRDS(object = MSR_D_normalised,
+            file = paste0(results.folder, "/", project.id, "_MSR_D_normalised_by_TPM.rds") )
+    
+    
+    ## 7. Calculate MSR_A normalised values & save results
+    MSR_A_normalised <- median_TPM_values_disease_groups_common_introns %>%
+      dplyr::select(-c(MSR_D,MSR_A,MSR_D_normalised)) %>%
+      spread(key = disease, MSR_A_normalised)
+    saveRDS(object = MSR_A_normalised,
+            file = paste0(local_results_folder, "/", project.id, "_MSR_A_normalised_by_TPM.rds") )
+    
+    
+  } else {
+    message(project.id, " - loading normalised MSR values....")
+    MSR_D_normalised <- readRDS(file = paste0(local_results_folder, 
+                                              "/", project.id,"_MSR_D_normalised_by_TPM.rds"))
+    MSR_A_normalised <- readRDS(file = paste0(local_results_folder, 
+                                              "/", project.id,"_MSR_A_normalised_by_TPM.rds"))
+  }
+  
+  return(list(MSR_D_normalised = MSR_D_normalised,
+              MSR_A_normalised = MSR_A_normalised))
+}
+
+#effect.size.file.path = "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/results/splicing_1read/105/_paper_review/results//MSR_normalisation_by_TPM/BRAIN_all_effect_size_age_normalised_TPM.rds"
+#figure.name = "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/results/splicing_1read/105/_paper_review/figures//age_normalised_MSR_by_TPM/BRAIN_effsize_age_normalised_MSR_by_TPM.png"
+AD_control_plot_effsize_MSR_normalised_by_TPM <- function(effect.size.file.path,
+                                                          figure.name,
+                                                          plot.stats = F) {
+  
+  
+  # file_name <- paste0(results_folder, "/effsize_MSR_with_age.rds")
+  
+  df_wilcoxon_AD <- readRDS(file = effect.size.file.path) %>%
+    group_by(MSR_type) %>%
+    mutate(q = p.adjust(pval, method = "fdr"))%>%
+    ungroup()
+  
+  #######################################################
+  ## PLOTS
+  #######################################################
+  
+  df_wilcoxon_AD$MSR_type = factor(df_wilcoxon_AD$MSR_type, 
+                                    levels = c(df_wilcoxon_AD$MSR_type %>% unique))
+  
+  df_wilcoxon_tidy_final <- df_wilcoxon_AD %>%
+    filter(project %in% (df_wilcoxon_AD %>%
+                           group_by(project) %>%
+                           filter(q <= 0.05) %>%
+                           ungroup() %>% 
+                           pull(project)) ) %>%
+    mutate(project = str_replace(project, pattern = "_",replacement = " ")) %>%
+    group_by(MSR_type) %>%
+    mutate(gene_normalised = fct_reorder(gene_normalised, plyr::desc(effsize))) %>%
+    ungroup()  
+  
+  
+
+  ####################################
+  ## PLOT 
+  ####################################
+  
+  ggplot(data = df_wilcoxon_tidy_final %>%
+           dplyr::select(effsize, gene_normalised, MSR_type, q, Splicing.regulation, Spliceosome,Exon.Junction.Complex,NMD ) %>%
+           mutate(type = ifelse(Splicing.regulation == 1, "Splicing.regulation",
+                                ifelse(Spliceosome == 1, "Spliceosome",
+                                       ifelse(Exon.Junction.Complex == 1, "Exon.Junction.Complex","NMD")))),
+         aes(x = effsize, y = gene_normalised, color = MSR_type, size = q)) +
+    geom_point(alpha=.7) +
+    ggforce::facet_row(~type, scales = "free") +
+    theme_light() +
+    ylab("") +
+    xlab("Probability of superior MSR in 60-79yrs compared to 20-39yrs") +
+    scale_color_manual(values = c("#35B779FF","#64037d"),
+                       breaks = c("MSR Donor", "MSR Acceptor"),
+                       labels = c("MSR Donor", "MSR Acceptor")) +
+    custom_ggtheme + 
+    theme( plot.margin = margin(0,10,0,0),
+           legend.box.margin=margin(b = -11),
+           legend.position="top", 
+           legend.box="horizontal") +
+    scale_size(name = "q:",
+               #trans="log10",
+               range=c(5, 1), 
+               breaks=c(2.2e-16, 0.5)) +
+    
+    #guides(size = guide_legend(title = "q:"))+
+    guides(color = guide_legend(title = ""))+
+    scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
+  
+  ## Save the figure 
+  ggplot2::ggsave(filename = figure.name, width = 220, height = 280, units = "mm", dpi = 300)
+  
+  
+  
+  if (plot.stats) {
+    
+    ## STATS - DONOR
+    df_wilcoxon_tidy_final %>%
+      filter(MSR_type == "MSR Donor", 
+             q < 0.05) %>%
+      arrange(effsize)
+    
+    df_wilcoxon_tidy_final %>%
+      filter(MSR_type == "MSR Donor", 
+             q < 0.05) %>%
+      pull(effsize) %>% summary
+    
+    
+    
+    ## STATS - ACCEPTOR
+    df_wilcoxon_tidy_final %>%
+      filter(MSR_type == "MSR Acceptor", 
+             q < 0.05) %>%
+      arrange(effsize)
+    
+    df_wilcoxon_tidy_final %>%
+      filter(MSR_type == "MSR Acceptor", 
+             q < 0.05) %>%
+      pull(effsize) %>% summary
+  }
+  
+  
+  
+  
+  
+}
+
+
 ##################################
 ## CALLS
 ##################################
-get_common_subsample_introns
+
+get_common_subsample_introns()
   

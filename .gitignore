@@ -54,3 +54,7 @@ results/
 .Rproj.user
 
 markdown/
+logs/
+dependencies/
+
+analysis.R
