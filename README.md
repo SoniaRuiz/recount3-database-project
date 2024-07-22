@@ -8,7 +8,7 @@ doi: [https://doi.org/10.1101/2023.03.29.534370](https://doi.org/10.1101/2023.03
 
 ## Repository 
 
-This 'Breadcrumbsrecount3-database-project' repository contains the code used to generate all the databased produced for the manuscript [**Splicing accuracy varies across human introns, tissues and age**](https://doi.org/10.1101/2023.03.29.534370).
+This 'recount3-database-project' repository contains the code used to generate all the databased produced for the manuscript [**Splicing accuracy varies across human introns, tissues and age**](https://doi.org/10.1101/2023.03.29.534370).
 
 
 ### 1. *"Splicing"* Database Generation
