@@ -1615,12 +1615,18 @@ plot_GO_KEGG__REACTOME_terms <- function() {
 ##################################
 
 
-AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
+AD_control_effsize_MSR_normalised_by_TPM <- function(replace = F) {
   
   
   
-  local_results_folder <- paste0(results_folder, "/", all_projects, "/MSR_normalisation_by_TPM/")
-  dir.create(path = local_results_folder)
+  
+  #common_introns <- readRDS(file = paste0(results_path, "/common_subsampled_introns_seed1000.rds"))
+  
+  
+  local_results_folder <- paste0(results_folder, "/_paper/results/MSR_normalisation_by_TPM/")
+  dir.create(path = local_results_folder, showWarnings = F)
+  local_figures_folder <-  paste0(figures_path, "/MSR_normalisation_by_TPM/")
+  dir.create(path = local_figures_folder, showWarnings = F)
   
   
   do_paired_test <- T
@@ -1656,8 +1662,8 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
     message(project_id, "...")
     
     
-    if ( !file.exists(paste0(local_results_folder, "/", project_id, "_all_effect_size_normalised_TPM.rds")) || 
-         replace) {
+    if ( !file.exists(paste0(local_results_folder, "/", project_id,"_all_effect_size_normalised_TPM.rds")) || 
+         replace ) {
       
       
       ################################
@@ -1665,10 +1671,39 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
       ## NORMALISED BY NMD/TPM VALUES
       ################################
       
-      MSR_normalised <- AD_control_normalise_MSR_values_by_TPM(project.id = project_id,
-                                                               gene.list = all_RBPs_tidy,
-                                                               results.folder = local_results_folder)
+      # MSR_normalised <- AD_control_normalise_MSR_values_by_TPM(project.id = project_id,
+      #                                                          gene.list = all_RBPs_tidy,
+      #                                                          results.folder = local_results_folder)
       
+      
+      if ( file.exists(paste0(local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds")) ) {
+        
+        fold_change_TPM <- readRDS(file = paste0(local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds"))
+        
+      } else {
+        
+        fold_change_TPM <- AD_control_calculate_fold_change_TPM(project.id = project_id,
+                                                                RBP.list = all_RBPs_tidy,
+                                                                get.median = T )
+        
+        fold_change_TPM %>% arrange(t_test) %>% as_tibble()
+        
+        saveRDS(object = fold_change_TPM,
+                file = paste0(local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds"))
+      }
+      
+      
+      
+      MSR_normalised <- AD_control_normalise_MSR_values_by_gene_TPM(project.id = project_id,
+                                                                    fold.change.TPM = fold_change_TPM,
+                                                                    gene.list = all_RBPs_tidy)
+      
+      ## Get common introns between AD and control
+      
+      introns_control <- MSR_normalised %>% filter(groups == "control") %>% distinct(ref_junID)
+      introns_AD <- MSR_normalised %>% filter(groups == "AD") %>% distinct(ref_junID)
+      common_introns <- intersect(introns_AD$ref_junID, introns_control$ref_junID) %>% unique()
+      common_introns %>% length()
       
       
       ################################
@@ -1676,12 +1711,11 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
       ## USING MSR NORMALISED DATA
       ################################
       
-      message("Calculating age effect sizes using MSR normalised data....")
+      message("Calculating AD effect sizes using MSR normalised data....")
       
       
       
-      gene_list <- c(MSR_normalised$MSR_D_normalised$gene_normalised %>% unique %>% sort,
-                     MSR_normalised$MSR_A_normalised$gene_normalised %>% unique %>% sort) %>% unique()
+      gene_list <- MSR_normalised$gene_normalised %>% unique %>% sort
       
       
       doParallel::registerDoParallel(cores = 4)
@@ -1694,7 +1728,7 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
         message(gene, "....")
         
         
-        map_df(c("MSR Donor","MSR Acceptor"), function(MSR_type) {
+        map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) {
           
           # MSR_type = "MSR Donor"
           
@@ -1702,13 +1736,17 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
           
           
           if (MSR_type == "MSR Donor") {
-            MSR_normalised_data = MSR_normalised$MSR_D_normalised 
+            MSR_normalised_data = MSR_normalised %>%
+              dplyr::select(ref_junID, MSR_normalised = MSR_D_normalised, disease_group = groups, gene_normalised)
           } else {
-            MSR_normalised_data = MSR_normalised$MSR_A_normalised
+            MSR_normalised_data = MSR_normalised %>%
+              dplyr::select(ref_junID, MSR_normalised = MSR_A_normalised, disease_group = groups, gene_normalised)
           }
           
-          MSR_normalised_data = MSR_normalised_data  %>%
-            filter(gene_normalised == gene)
+          MSR_normalised_data = MSR_normalised_data   %>%
+            filter(ref_junID %in% (common_introns)) %>%
+            filter(gene_normalised == gene) %>%
+            spread(key = disease_group, MSR_normalised) 
           
           
           ## Wilcoxon one-tailed test
@@ -1720,15 +1758,21 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
           
           ## Wilcoxon effect size
           message(MSR_type, " - Wilcoxon paired effect size test ....")
-          r_effect1 <- rstatix::wilcox_effsize(data = MSR_normalised_data %>%
+          
+          w_effsize <- rstatix::wilcox_effsize(data = MSR_normalised_data %>%
                                                  dplyr::select(ref_junID, control, AD) %>%
-                                                 gather(key = disease, value = MSR, -ref_junID) %>%
-                                                 mutate(disease = disease %>% as.factor()),
-                                               formula = MSR ~ disease,
-                                               paired = F) %>%
+                                                 gather(key = disease_group, value = MSR, -ref_junID) %>%
+                                                 mutate(disease_group = disease_group %>% as.factor()),
+                                               formula = MSR ~ disease_group,
+                                               alternative = "less",
+                                               ref.group = "control",
+                                               conf.level = .05,
+                                               paired = T) %>%
             mutate(MSR_type = MSR_type, 
                    project = project_id,
                    gene_normalised = gene)
+          
+          
           
           
           # ## Save results
@@ -1739,7 +1783,7 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
           #                       project_id,"_", gene, "_",MSR_type,"_effect_size_age_normalised_TPM.rds"))
           
           ## Return results
-          return(r_effect1 %>% cbind(wilcox_pval))
+          return(w_effsize %>% cbind(wilcox_pval))
           
         })
       } 
@@ -1753,8 +1797,7 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
       
       
     } else {
-      effect_size_normalised_TPM <- readRDS(file = paste0(local_results_folder, 
-                                                          "/", project_id, "_all_effect_size_normalised_TPM.rds"))
+      effect_size_normalised_TPM <- readRDS(file = paste0(local_results_folder, "/", project_id,"_all_effect_size_normalised_TPM.rds"))
     }
     
     
@@ -1763,8 +1806,8 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
     ## USING MSR NORMALISED DATA
     ################################
     
-    AD_control_plot_effsize_MSR_normalised_by_TPM(effect.size.file.path = paste0(local_results_folder, "/", project_id, "_all_effect_size_normalised_TPM.rds"),
-                                                  figure.name = paste0(local_results_folder, "/", project_id, "_all_effect_size_normalised_TPM.png"))
+    AD_control_plot_effsize_MSR_normalised_by_TPM(effect.size.file.path = paste0(local_results_folder, "/", project_id,"_all_effect_size_normalised_TPM.rds"),
+                                                  figure.name = paste0(local_figures_folder, project_id, "_all_effect_size_normalised_TPM.png"))
   }
   
   
@@ -1773,133 +1816,295 @@ AD_control_effsize_MSR_normalised_by_TPM <- function(replace = T) {
 }
 
 
-AD_control_normalise_MSR_values_by_TPM <- function(project.id,
-                                                   gene.list,
-                                                   results.folder) {
+
+AD_control_calculate_fold_change_TPM <- function(project.id,
+                                                 RBP.list,
+                                                 get.median = T) {
   
   
   
   
-  if ( !file.exists(paste0(results.folder, "/",project.id,"_MSR_D_normalised_by_TPM.rds")) || 
-       !file.exists(paste0(results.folder, "/",project.id,"_MSR_A_normalised_by_TPM.rds")) ) {
+  fold_change_TPM_values_age_groups <- map_df(RBP.list$id, function(RBP) {
+    
+    # RBP = RBP.list$id[1]
+    # RBP = "ENSG00000271885"
+    
+    message(RBP,"...")
+    
+    control_group_TPM <- readRDS(file = paste0(base_folder,"/results/",project_name,"/", gtf_version, "/", project.id, "/tpm/",
+                                             project.id, "_control_tpm.rds")) %>%
+      filter(gene_id %in% RBP ) %>% 
+      rowwise() %>% 
+      mutate(TPM = mean( c_across(where(is.numeric))) ) %>%
+      ungroup()
+    
+    
+    AD_group_TPM <- readRDS(file = paste0(base_folder,"/results/",project_name,"/", gtf_version, "/", project.id, "/tpm/",
+                                              project.id, "_AD_tpm.rds")) %>%
+      filter(gene_id %in% RBP ) %>% 
+      rowwise() %>% 
+      mutate(TPM = mean( c_across(where(is.numeric))) ) %>%
+      ungroup() 
     
     
     
-    median_TPM_values_disease_groups <- map_df(c("AD","control"), function(cluster_id) {
+    if ( control_group_TPM %>% nrow == 1 &&
+         AD_group_TPM %>% nrow == 1 ) {
       
-      # cluster_id <- c("AD","control")[1]
       
-      message(cluster_id, "...")
+      
+      fold_change = AD_group_TPM$TPM/control_group_TPM$TPM
+      
+      data.frame(gene = RBP,
+                 mean_TPM_control = control_group_TPM$TPM,
+                 mean_TPM_AD = AD_group_TPM$TPM,
+                 fold_change = fold_change,
+                 inverse_fold_change = 1/fold_change,
+                 t_test = t.test(control_group_TPM[,-1] %>% gather() %>% pull(value),
+                                 AD_group_TPM[,-1] %>% gather() %>% pull(value))$p.value,
+                 type = ifelse(fold_change > 1, "upregulation with AD", 
+                               ifelse(fold_change < 1, "downregulation with AD", 
+                                      "no change in expression w AD"))) %>%
+        return()
+    
+    } else {
+      return(NULL)
+    }
   
+  })
+  
+  fold_change_TPM_values_age_groups %>%
+    inner_join(y = RBP.list ,
+               by = c("gene" = "id")) %>%
+    arrange(desc(fold_change)) %>%
+    return()
+  
+}
+
+AD_control_normalise_MSR_values_by_gene_TPM <- function(project.id,
+                                                        fold.change.TPM,
+                                                        gene.list) {
+  
+  
+  
+  
+  local_results_folder <- paste0(results_folder, "/MSR_normalisation_by_TPM/")
+  # 
+  # # 2. Query database to get MSR values across age groups
+  # introns_MSR_age_groups <- map_df(c("20-39","60-79"), function(cluster_id) {
+  # 
+  #   # cluster_id = "20-39"
+  #   message(cluster_id, "...")
+  #   con <- dbConnect(RSQLite::SQLite(), database_path)
+  #   query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_misspliced'")
+  #   tissue_introns <- dbGetQuery(con, query) %>% as_tibble() %>% distinct(ref_junID, .keep_all = T)
+  #   
+  #   query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_nevermisspliced' " )
+  #   tissue_introns <- rbind(tissue_introns, dbGetQuery(con, query)) %>% as_tibble() %>% 
+  #     distinct(ref_junID, .keep_all = T) %>%
+  #     arrange(ref_junID)
+  #   DBI::dbDisconnect(con)
+  #   
+  #   tissue_introns %>%
+  #     mutate(age = cluster_id) %>%
+  #     return()
+  # })
+  # 
+  # 
+  # 
+  # 
+  # introns_MSR_D_age_groups <- introns_MSR_age_groups %>%
+  #   dplyr::select(-MSR_A) %>%
+  #   mutate(MSR_D = ifelse(MSR_D == 0, 0.00000001, MSR_D)) %>%
+  #   tidyr::spread(key = age, value=MSR_D ) %>%
+  #   mutate(MSR_D_fold_change = log2(`60-79`/`20-39`)) %>%
+  #   drop_na()
+  # 
+  # 
+  # fold_change_TPM <- fold.change.TPM %>%
+  #   mutate(fold_change = fold_change_eldest %>% log2)
+  # 
+  # 
+  # wilcox.test(introns_MSR_D_age_groups$MSR_D_fold_change,
+  #             fold_change_TPM %>% filter(Splicing.regulation == 1) %>% pull(fold_change))
+  # 
+  # 
+  # wilcox.test(introns_MSR_D_age_groups$MSR_D_fold_change,
+  #             fold_change_TPM %>% filter(NMD == 1) %>% pull(fold_change))
+  # 
+  # 
+  # wilcox.test(introns_MSR_D_age_groups$MSR_D_fold_change,
+  #             fold_change_TPM %>% filter(Spliceosome == 1) %>% pull(fold_change))
+  # 
+  # 
+  # wilcox.test(introns_MSR_D_age_groups$MSR_D_fold_change,
+  #             fold_change_TPM %>% filter(Exon.Junction.Complex == 1) %>% pull(fold_change))
+  # 
+  # 
+  # introns_MSR_D_age_groups
+  # wilcox.test(x = introns_MSR_D_age_groups$`20-39`,
+  #             y = introns_MSR_D_age_groups$`60-79`,
+  #             alternative = "less",
+  #             correct = T,
+  #             paired = T)
+  # 
+  # 
+  # introns_MSR_A_age_groups <- introns_MSR_age_groups %>%
+  #   dplyr::select(-MSR_D) %>%
+  #   tidyr::spread(key = age, value = MSR_A)
+  # 
+  # wilcox.test(x = introns_MSR_A_age_groups$`20-39`,
+  #             y = introns_MSR_A_age_groups$`60-79`,
+  #             alternative = "less",
+  #             correct = T,
+  #             paired = T)
+  # 
+  
+  
+  
+  
+  # if ( !file.exists(paste0(local_results_folder, "/",project.id,"/",project.id,"_age_MSR_D_normalised_by_TPM.rds")) || 
+  #      !file.exists(paste0(local_results_folder, "/",project.id,"/",project.id,"_age_MSR_D_normalised_by_TPM.rds")) ) {
+  
+  median_TPM_values_age_groups <- map_df( c("control","AD"), function(cluster_id) {
+    
+    # cluster_id <- c("control","AD")[1]
+    
+    message(cluster_id, "...")
+    
+    # cluster_id <- (df_metadata$cluster %>% unique())[1]
+    
+    ## 1. Calculate median TPM values corresponding to each RBP/NMD gene across the samples of each age group
+    message(cluster_id, " - getting introns from database .... ")
+    
+    # if (file.exists(paste0(base_folder,"/results/splicing_1read/", gtf_version, "/", project.id, "/tpm/",
+    #                        project.id, "_", cluster_id, "_tpm.rds"))) {
+    
+    
+    # message("Calculating median TPM values across sample groups...")
+    # 
+    # local_TPM <- readRDS(file = paste0(base_folder,"/results/splicing_1read/", gtf_version, "/", project.id, "/tpm/",
+    #                                    project.id, "_", cluster_id, "_tpm.rds")) %>%
+    #   filter(gene_id %in% (gene.list$id) )
+    # 
+    # 
+    # if (get.median) {
+    #   local_TPM_w_median <- local_TPM %>% 
+    #     rowwise() %>% 
+    #     mutate(TPM = median( c_across(where(is.numeric))) )
+    # } else {
+    #   local_TPM_w_median <- local_TPM %>% 
+    #     rowwise() %>% 
+    #     mutate(TPM = mean( c_across(where(is.numeric))) )
+    # }
+    # local_TPM_w_median <- local_TPM_w_median %>%
+    #   dplyr::select(gene_id, TPM)  %>%
+    #   inner_join(y = gene.list, by = c("gene_id"="id")) %>%
+    #   dplyr::rename(gene_name = name) %>%
+    #   dplyr::relocate(gene_name, .after = "gene_id") %>%
+    #   mutate(inverse_TPM = 1/TPM) %>%
+    #   dplyr::relocate(inverse_TPM, .after = "TPM")
+    
+    
+    # 2. Query database to get MSR values across age groups
+    con <- dbConnect(RSQLite::SQLite(), database_path)
+    query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_misspliced'")
+    all_introns <- dbGetQuery(con, query) %>% as_tibble() %>% distinct(ref_junID, .keep_all = T)
+    
+    query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_nevermisspliced' " )
+    all_introns <- rbind(all_introns, dbGetQuery(con, query)) %>% as_tibble() %>% 
+      distinct(ref_junID, .keep_all = T) %>%
+      arrange(ref_junID)
+    DBI::dbDisconnect(con)
+    
+    
+    message("Calculating normalised MSR values by inverse fold-change TPM...")
+    
+    
+    # 3. Normalise MSR values per RBP/NMD gene in the age group and tissue
+    normalised_TPM <- map_df(fold.change.TPM$name, function(gene_name) {
       
+      # message(gene_name, "...")
+      # gene_name <- fold.change.TPM$name[1]
       
-      ## 1. Calculate median TPM values corresponding to each RBP/NMD gene across the samples of each disease group
-      print(paste0(Sys.time(), " - ", cluster_id, " ... "))
-      
-      if (file.exists(paste0(base_folder, "/results/", project_name, "/", gtf_version, "/", project.id, "/tpm/",
-                             project.id, "_", cluster_id, "_tpm.rds"))) {
-        
-        
-        
-        local_TPM <- readRDS(file = paste0(base_folder,"/results/",project_name,"/", gtf_version, "/", project.id, "/tpm/",
-                                           project.id, "_", cluster_id, "_tpm.rds")) %>%
-          filter(gene_id %in% (gene.list$id) )
-        
-        
-        local_TPM_w_median <- local_TPM %>% 
-          rowwise() %>% 
-          #mutate(mean_TPM = mean( c_across(where(is.numeric)))) %>%
-          mutate(median_TPM = median( c_across(where(is.numeric)))) %>%
-          dplyr::select(gene_id, median_TPM)  %>%
-          inner_join(y = gene.list, by = c("gene_id"="id")) %>%
-          dplyr::rename(gene_name = name) %>%
-          dplyr::relocate(gene_name, .after = "gene_id")
-        
-        
-        # 2. Query database to get MSR values across age groups
-        con <- dbConnect(RSQLite::SQLite(), database_path)
-        query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_misspliced'")
-        tissue_introns <- dbGetQuery(con, query) %>% as_tibble()
-        
-        query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_nevermisspliced' " )
-        tissue_introns <- rbind(tissue_introns, dbGetQuery(con, query)) %>% as_tibble()
-        tissue_introns <- tissue_introns %>% distinct(ref_junID, .keep_all = T)
-        DBI::dbDisconnect(con)
-        
-        
-        # 3. Normalise MSR values per RBP/NMD gene in each disease group and tissue
-        normalised_TPM <- map_df(local_TPM_w_median$gene_name, function(gene) {
-          
-          message(gene, "...")
-          # gene <- local_TPM_w_median$gene_name[1]
-          
-          TPM <- local_TPM_w_median %>% filter(gene_name == gene) %>% pull(median_TPM)
-          
-          tissue_introns %>%
-            mutate(MSR_D_normalised = MSR_D/TPM,
-                   MSR_A_normalised = MSR_A/TPM) %>%
-            mutate(disease = cluster_id,
-                   gene_normalised = gene) %>%
-            return()
-          
-        })
-        
-        
-        normalised_TPM[which(!is.finite(normalised_TPM$MSR_D_normalised)),"MSR_D_normalised"] <- 0
-        normalised_TPM[which(!is.finite(normalised_TPM$MSR_A_normalised)),"MSR_A_normalised"] <- 0
-        
-        normalised_TPM %>% 
-          return()
-        
-        
+      if (cluster_id == "AD") {
+        TPM <- fold.change.TPM %>% filter(name == gene_name) %>% pull(inverse_fold_change)
       } else {
-        return(NULL)
-      }   
+        #TPM <- fold.change.TPM %>% filter(name == gene_name) %>% pull(mean_youngest)
+        TPM <- 1
+      }
+      
+      
+      
+      all_introns %>%
+        mutate(MSR_D_normalised = MSR_D/TPM,
+               MSR_A_normalised = MSR_A/TPM) %>%
+        mutate(TPM_group = fold.change.TPM %>% filter(name == gene_name) %>% pull(fold_change),
+               inverse_TPM_group = TPM,
+               groups = cluster_id,
+               gene_normalised = gene_name) %>%
+        return()
+      
     })
     
     
-    ## 4. Get only the annotated introns overlapping the two disease groups
-    common_ref_junID <- median_TPM_values_disease_groups %>%
-      group_by(disease) %>%
-      distinct(ref_junID) %>%
-      ungroup() %>%
-      dplyr::count(ref_junID) %>%
-      filter(n==2) %>%
-      pull(ref_junID)
     
     
-    ## 5. Filter the results by common introns between the two disease groups
-    median_TPM_values_disease_groups_common_introns <- median_TPM_values_disease_groups %>%
-      filter(ref_junID %in% common_ref_junID) 
+    #normalised_TPM[which(!is.finite(normalised_TPM$MSR_D_normalised)),"MSR_D_normalised"] <- 0
+    #normalised_TPM[which(!is.finite(normalised_TPM$MSR_A_normalised)),"MSR_A_normalised"] <- 0
+    
+    normalised_TPM %>% 
+      return()
     
     
-    ## 6. Calculate MSR_D normalised values & save results
-    MSR_D_normalised <- median_TPM_values_disease_groups_common_introns %>%
-      dplyr::select(-c(MSR_D, MSR_A, MSR_A_normalised)) %>%
-      spread(key = disease, MSR_D_normalised)
-    saveRDS(object = MSR_D_normalised,
-            file = paste0(results.folder, "/", project.id, "_MSR_D_normalised_by_TPM.rds") )
-    
-    
-    ## 7. Calculate MSR_A normalised values & save results
-    MSR_A_normalised <- median_TPM_values_disease_groups_common_introns %>%
-      dplyr::select(-c(MSR_D,MSR_A,MSR_D_normalised)) %>%
-      spread(key = disease, MSR_A_normalised)
-    saveRDS(object = MSR_A_normalised,
-            file = paste0(local_results_folder, "/", project.id, "_MSR_A_normalised_by_TPM.rds") )
-    
-    
-  } else {
-    message(project.id, " - loading normalised MSR values....")
-    MSR_D_normalised <- readRDS(file = paste0(local_results_folder, 
-                                              "/", project.id,"_MSR_D_normalised_by_TPM.rds"))
-    MSR_A_normalised <- readRDS(file = paste0(local_results_folder, 
-                                              "/", project.id,"_MSR_A_normalised_by_TPM.rds"))
-  }
+    # } else {
+    #   return(NULL)
+    # }   
+  })
   
-  return(list(MSR_D_normalised = MSR_D_normalised,
-              MSR_A_normalised = MSR_A_normalised))
+  
+  
+  
+  # ## 4. Get only the annotated introns overlapping the two age groups
+  # common_ref_junID <- median_TPM_values_age_groups %>%
+  #   dplyr::count(ref_junID) %>%
+  #   filter(n == ((median_TPM_values_age_groups$gene_normalised %>% unique %>% length) * 2)) %>%
+  #   pull(ref_junID)
+  # 
+  # 
+  # ## 5. Filter the results by common introns between the two age groups
+  # median_TPM_values_age_groups_common_introns <- median_TPM_values_age_groups %>%
+  #   filter(ref_junID %in% common_ref_junID) 
+  
+  
+  # ## 6. Calculate MSR_D normalised values & save results
+  # MSR_D_normalised <- median_TPM_values_age_groups_common_introns %>%
+  #   dplyr::select(-c(MSR_D, MSR_A, MSR_A_normalised)) %>%
+  #   spread(key = age, MSR_D_normalised)
+  # saveRDS(object = MSR_D_normalised,
+  #         file = paste0(local_results_folder, "/",project.id,"/", project.id,"_age_MSR_D_normalised_by_TPM.rds"))
+  # 
+  # 
+  # ## 7. Calculate MSR_A normalised values & save results
+  # MSR_A_normalised <- median_TPM_values_age_groups_common_introns %>%
+  #   dplyr::select(-c(MSR_D,MSR_A,MSR_D_normalised)) %>%
+  #   spread(key = age, MSR_A_normalised)
+  # saveRDS(object = MSR_A_normalised,
+  #         file = paste0(local_results_folder, "/",project.id,"/", project.id,"_age_MSR_A_normalised_by_TPM.rds"))
+  
+  
+  # } else {
+  #   message(project.id, " - loading normalised MSR values....")
+  #   MSR_D_normalised <- readRDS(file = paste0(local_results_folder, 
+  #                                             "/", project.id, "/", project.id,"_age_MSR_D_normalised_by_TPM.rds"))
+  #   MSR_A_normalised <- readRDS(file = paste0(local_results_folder, 
+  #                                             "/", project.id, "/", project.id,"_age_MSR_A_normalised_by_TPM.rds"))
+  # }
+  
+  return(median_TPM_values_age_groups)
+  
 }
+
 
 #effect.size.file.path = "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/results/splicing_1read/105/_paper_review/results//MSR_normalisation_by_TPM/BRAIN_all_effect_size_age_normalised_TPM.rds"
 #figure.name = "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/results/splicing_1read/105/_paper_review/figures//age_normalised_MSR_by_TPM/BRAIN_effsize_age_normalised_MSR_by_TPM.png"
@@ -1907,6 +2112,7 @@ AD_control_plot_effsize_MSR_normalised_by_TPM <- function(effect.size.file.path,
                                                           figure.name,
                                                           plot.stats = F) {
   
+
   
   # file_name <- paste0(results_folder, "/effsize_MSR_with_age.rds")
   
@@ -1925,39 +2131,57 @@ AD_control_plot_effsize_MSR_normalised_by_TPM <- function(effect.size.file.path,
   df_wilcoxon_tidy_final <- df_wilcoxon_AD %>%
     filter(project %in% (df_wilcoxon_AD %>%
                            group_by(project) %>%
-                           filter(q <= 0.05) %>%
+                           #filter(q <= 0.05) %>%
                            ungroup() %>% 
                            pull(project)) ) %>%
     mutate(project = str_replace(project, pattern = "_",replacement = " ")) %>%
     group_by(MSR_type) %>%
     mutate(gene_normalised = fct_reorder(gene_normalised, plyr::desc(effsize))) %>%
+    dplyr::select(effsize, gene_normalised, MSR_type, q, 
+                  Splicing.regulation, 
+                  Spliceosome, 
+                  Exon.Junction.Complex, 
+                  NMD ) %>%
+    mutate(type = ifelse(Splicing.regulation == 1, "Splicing Regulation",
+                         ifelse(Spliceosome == 1, "Spliceosome",
+                                ifelse(Exon.Junction.Complex == 1, "Exon Junction Complex", "NMD")))) %>%
+    mutate(type = factor(type, levels=c('NMD','Splicing Regulation','Spliceosome',
+                                        'Exon Junction Complex'))) %>%
     ungroup()  
   
   
 
+  
   ####################################
   ## PLOT 
   ####################################
   
-  ggplot(data = df_wilcoxon_tidy_final %>%
-           dplyr::select(effsize, gene_normalised, MSR_type, q, Splicing.regulation, Spliceosome,Exon.Junction.Complex,NMD ) %>%
-           mutate(type = ifelse(Splicing.regulation == 1, "Splicing.regulation",
-                                ifelse(Spliceosome == 1, "Spliceosome",
-                                       ifelse(Exon.Junction.Complex == 1, "Exon.Junction.Complex","NMD")))),
-         aes(x = effsize, y = gene_normalised, color = MSR_type, size = q)) +
+  ggplot(data = df_wilcoxon_tidy_final,
+         aes(x = effsize, y = gene_normalised, color = MSR_type)) +
     geom_point(alpha=.7) +
-    ggforce::facet_row(~type, scales = "free") +
+    ggforce::facet_row(~type) +
+    geom_vline(mapping = aes(xintercept = 0.053), linetype="dotted") +
     theme_light() +
     ylab("") +
-    xlab("Probability of superior MSR in 60-79yrs compared to 20-39yrs") +
+    xlab("Probability of superior MSR after controlling for individual RBP/NMD activity in '60-79'yrs compared to '20-39'yrs") +
     scale_color_manual(values = c("#35B779FF","#64037d"),
                        breaks = c("MSR Donor", "MSR Acceptor"),
                        labels = c("MSR Donor", "MSR Acceptor")) +
     custom_ggtheme + 
-    theme( plot.margin = margin(0,10,0,0),
-           legend.box.margin=margin(b = -11),
-           legend.position="top", 
-           legend.box="horizontal") +
+    theme( plot.margin = margin(0,0,0,0),
+           legend.box.margin = margin(l = -11),
+           legend.position = "right", 
+           legend.box = "horizontal", 
+           axis.text.y = element_text(size = 6, 
+                                      family="Arial", colour = "black"), 
+           axis.text.x = element_text(size = 6, 
+                                      family="Arial", colour = "black"),
+           axis.title.x = element_text(size = 7, 
+                                      family="Arial", colour = "black"),
+           strip.text.x = element_text(size = 7, 
+                                       family="Arial", colour = "black"),
+           legend.text = element_text(size = 7, 
+                                       family="Arial", colour = "black") ) +
     scale_size(name = "q:",
                #trans="log10",
                range=c(5, 1), 
@@ -1968,7 +2192,7 @@ AD_control_plot_effsize_MSR_normalised_by_TPM <- function(effect.size.file.path,
     scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
   
   ## Save the figure 
-  ggplot2::ggsave(filename = figure.name, width = 220, height = 280, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = figure.name, width = 180, height = 240, units = "mm", dpi = 300)
   
   
   
@@ -2010,5 +2234,5 @@ AD_control_plot_effsize_MSR_normalised_by_TPM <- function(effect.size.file.path,
 ## CALLS
 ##################################
 
-get_common_subsample_introns()
+AD_control_effsize_MSR_normalised_by_TPM()
   
