@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/663495574.svg)](https://zenodo.org/doi/10.5281/zenodo.12794619)
+
 ## Splicing accuracy varies across human introns, tissues, age and disease
 
 *Sonia Garcia-Ruiz, [David Zhang](https://github.com/dzhang32), [Emil K Gustavsson](https://github.com/egustavsson), Guillermo Rocamora-Perez, [Melissa Grant-Peters](https://github.com/mgrantpeters), Aine Fairbrother-Browne, Regina H Reynolds, Jonathan W Brenton, Ana L Gil-Martinez, Zhongbo Chen, Donald C Rio, Juan A Botia, Sebastian Guelfi, [Leonardo Collado-Torres](https://lcolladotor.github.io/), Mina Ryten*
