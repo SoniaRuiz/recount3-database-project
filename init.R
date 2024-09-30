@@ -18,7 +18,7 @@ base_folder <- here::here()
 
 
 # dependencies_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript//dependencies/")
-dependencies_folder <- paste0("~/PROJECTS/splicing-accuracy-manuscript/dependencies/")
+dependencies_folder <- file.path(base_folder, "dependencies/")
 
 
 
@@ -80,7 +80,7 @@ project_name <- paste0(main_project_identifier, "_", supportive_reads, "read_sub
 
 # scripts_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript/scripts/")
 
-scripts_folder <- paste0(base_folder, "/scripts/")
+scripts_folder <- file.path(base_folder, "scripts/")
 setwd(file.path(scripts_folder))
 files.sources = list.files()
 sapply(files.sources, source)
@@ -100,29 +100,29 @@ logger::log_layout(logger_layout)
 #####################################
 
 ## This is the Ensembl gtf transcriptome version 
-gtf_versions <- c(111)
+gtf_versions <- c(76, 81, 90, 104)
 
 
 for (gtf_version in gtf_versions) {
   
   # gtf_version <- gtf_versions[1]
   
-  database_folder <- paste0(base_folder, "/database/", project_name, "/", gtf_version, "/")
+  database_folder <- file.path(base_folder, "database", project_name, gtf_version)
   dir.create(path = database_folder, recursive = T, showWarnings = F)
   
-  results_folder <- paste0(base_folder, "/results/", project_name, "/", gtf_version, "/")
+  results_folder <- file.path(base_folder, "results", project_name, gtf_version)
   dir.create(path = results_folder, recursive = T, showWarnings = F)
   
-  tpm_folder <- paste0(base_folder, "/results/", project_name, "/tpm/")
+  tpm_folder <- file.path(base_folder, "results", project_name, "tpm")
   dir.create(path = tpm_folder, recursive = T, showWarnings = F)
   
 
-  # download_recount3_data(recount3.project.IDs = recount3_project_IDs,
-  #                        project.name = project_name,
-  #                        gtf.version = gtf_version,
-  #                        data.source = data_source,
-  #                        database.folder = database_folder,
-  #                        results.folder = results_folder)
+  download_recount3_data(recount3.project.IDs = recount3_project_IDs,
+                         project.name = project_name,
+                         gtf.version = gtf_version,
+                         data.source = data_source,
+                         database.folder = database_folder,
+                         results.folder = results_folder)
 
   # prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
   #                       data.source = data_source,
@@ -148,7 +148,7 @@ for (gtf_version in gtf_versions) {
   #                          num.cores = 8)
 
 
-  recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
+  # recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
 
 
   # tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
@@ -168,14 +168,14 @@ for (gtf_version in gtf_versions) {
   #                       results.folder = results_folder)
 
 
-  database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
-
-  sql_database_generation(database.path = database_path,
-                          recount3.project.IDs = recount3_project_IDs,
-                          remove.all = F,
-                          database.folder = database_folder,
-                          results.folder = results_folder,
-                          gtf.version = gtf_version)
+  # database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
+  # 
+  # sql_database_generation(database.path = database_path,
+  #                         recount3.project.IDs = recount3_project_IDs,
+  #                         remove.all = F,
+  #                         database.folder = database_folder,
+  #                         results.folder = results_folder,
+  #                         gtf.version = gtf_version)
   
 }
 

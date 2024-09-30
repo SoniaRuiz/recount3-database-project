@@ -58,3 +58,4 @@ logs/
 dependencies/
 
 analysis.R
+power_calculations.R

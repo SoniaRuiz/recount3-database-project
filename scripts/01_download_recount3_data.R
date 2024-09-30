@@ -29,10 +29,10 @@ download_recount3_data <- function (recount3.project.IDs,
   ## Read all the split reads and return them by tissue
   ##########################################################
   
-  if ( file.exists(paste0(database.folder, "/all_split_reads_raw.rds")) ) {
+  if ( file.exists(file.path(dirname(database.folder), "all_split_reads_raw.rds")) ) {
     
     logger::log_info("Loading 'all_split_reads_raw.rds' file...")
-    all_split_reads_raw <- readRDS(file = paste0(database.folder, "/all_split_reads_raw.rds"))
+    all_split_reads_raw <- readRDS(file = file.path(dirname(database.folder), "all_split_reads_raw.rds"))
     
   } else {
    
@@ -115,7 +115,7 @@ download_recount3_data <- function (recount3.project.IDs,
     ## Save data
     dir.create(file.path(database.folder), recursive = TRUE, showWarnings = T)
     saveRDS(object = all_split_reads_raw,
-            file = paste0(database.folder, "/all_split_reads_raw.rds"))
+            file = file.path(dirname(database.folder), "all_split_reads_raw.rds"))
     
   }
   
@@ -169,7 +169,7 @@ download_recount3_data <- function (recount3.project.IDs,
   
   logger::log_info("removing blacklist sequences...")
   
-  blacklist_path <- paste0(dependencies_folder, "/hg38-blacklist.v2.bed")
+  blacklist_path <- file.path(dependencies_folder, "hg38-blacklist.v2.bed")
   all_split_reads_raw_tidy_gr <- remove_encode_blacklist_regions(GRdata = all_split_reads_raw_tidy_gr,
                                                                  blacklist_path = blacklist_path)
   
