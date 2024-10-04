@@ -5,6 +5,8 @@ library(GenomicRanges)
 library(DBI)
 library(dplyr)
 library(here)
+library(logger)
+library(foreach)
 library(doParallel)
 library(Biostrings)
 library(tidyverse)
@@ -16,8 +18,7 @@ library(optparse)
 # base_folder <- "/mnt/PROJECTS/splicing-accuracy-manuscript/"
 # base_folder <- "~/PROJECTS/splicing-accuracy-manuscript/"
 
-base_folder <- here::here()
-dependencies_folder <- paste0(base_folder, "/dependencies/")
+
 
 #####################################
 ## LOAD SOURCE SCRIPTS
@@ -34,20 +35,57 @@ setwd(file.path(base_folder))
 #####################################
 
 ## This is the Ensembl gtf transcriptome version 
-gtf_versions <- c(111)
+gtf_version <- c(111)
 
 ## This is the name of the project producing the database
 supportive_reads <- 1
 analysis_type = "shRNA"
-project_name <- paste0("ENCODE_SR_", supportive_reads, "read_", analysis_type)
+main_project <- paste0("ENCODE_SR_", supportive_reads, "read_", analysis_type)
 
 ## Can be checked here: https://jhubiostatistics.shinyapps.io/recount3-study-explorer/
 
-## Load metadata ----
-RBPs_base_folder <- paste0(base_folder, "/results/",project_name,"/111/")
 
-metadata_path <- paste0(base_folder, "/ENCODE_SR/ENCODE_Splicing_Analysis/metadata/metadata_",analysis_type,"_samples.tsv")
-metadata <- readr::read_delim(metadata_path, show_col_types = F)
+
+
+args <-
+  list(
+    base_folder = here::here(),
+    dependencies_folder = file.path(here::here(), "dependencies"),
+    
+    results_folder = file.path(here::here(), "results", main_project, gtf_version),
+    figures_folder = file.path(here::here(), "results", main_project, gtf_version)
+  )
+
+
+#############################################
+## If it does not exists, download the data
+#############################################
+
+
+## Load metadata ----
+
+metadata_path <- paste0(args$results_folder, "/metadata_",analysis_type,"_samples.tsv")
+
+
+if ( !file.exists(metadata_path) ) {
+  
+  ## 1. Download metadata
+  metadata = ENCODE_download_metadata(experiment_type = analysis_type,
+                                         results_path = args$results_folder)
+  
+
+  
+  ## 2. Download .bam files
+  ENCODE_download_bams(metadata_df = metadata, results_path = args$results_folder)
+  
+} else {
+  metadata <- readr::read_delim(metadata_path, show_col_types = F)
+}
+
+
+
+
+#############################################
 
 
 if (analysis_type == "shRNA") {
@@ -70,7 +108,7 @@ metadata_RBPs <- metadata %>% dplyr::filter(target_gene %in% target_RBPs)
 
 
 #####################################
-## INIT - DATABASE RECOUNT3 PROJECT
+## INIT - DATABASE PROJECT
 #####################################
 
 
