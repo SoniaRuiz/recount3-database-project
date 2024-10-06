@@ -5,9 +5,10 @@
 ## Load additional helper functions ----
 ENCODE_download_metadata <- function(experiment_type,
                                      results_path,
+                                     dependencies_path,
                                      required_cell_lines = c("HepG2", "K562"),
                                      valid_genome_annotation = "V29",
-                                     valid_file_format = "alignments",
+                                     valid_file_format = "bam",
                                      valid_output_type = "alignments",
                                      valid_nucleic_acid_type = "polyadenylated mRNA",
                                      #download_method = "experiments",
@@ -35,7 +36,7 @@ ENCODE_download_metadata <- function(experiment_type,
   output_search <- file.path(results_path, paste0("all_", experiment_type, "_experiments.tsv"))
   output_metadata <- file.path(results_path, paste0("metadata_", experiment_type, "_samples.tsv"))
   
-  
+         
   
   
   ### LOAD RBP NAMES
@@ -55,23 +56,23 @@ ENCODE_download_metadata <- function(experiment_type,
   # 2. Pipeline ----
   
   ## Download the search data ----
+  URL = "https://www.encodeproject.org/search/?type=Experiment&assay_title=shRNA+RNA-seq&control_type!=*&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&limit=all&format=json"
   
   ## LONG READ
   # URL = "https://www.encodeproject.org/search/?type=Experiment&control_type!=*&assay_term_name=long+read+RNA-seq&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&files.platform.term_name=Pacific+Biosciences+Sequel+II&replicates.library.nucleic_acid_term_name=polyadenylated+mRNA&assembly=GRCh38&limit=all&format=json"
   ## CRISPR
   #URL = "https://www.encodeproject.org/search/?type=GeneSilencingSeries&searchTerm=gene+silencing&target.investigated_as=RNA+binding+protein&target.investigated_as=transcription+factor&assay_term_name=CRISPR+genome+editing+followed+by+RNA-seq&related_datasets.replicates.library.biosample.applied_modifications.method=CRISPR&organism.scientific_name=Homo+sapiens&assembly=GRCh38&related_datasets.files.file_type=bam&related_datasets.files.file_type=bigWig&award.rfa=ENCODE4&status=released&limit=all&format=json"
   ## shRNA
-  URL = "https://www.encodeproject.org/search/?type=Experiment&assay_title=shRNA+RNA-seq&control_type!=*&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&limit=all&format=json"
   
   
   
-  ## Download the json data from ENCODE
-  response_data <- getUrlResponse(URL, output_json)
+  ## Query the ENCODE API to download a list of experiments in json format ---
+  response_data <- getUrlResponse(URL, output_file = output_json)
   
   
   
   
-  ## Summarize the search ----
+  ## Summarize the list of experiments from ENCODE search --------------------
   summary_df <- generateSummary(response_data, 
                                 valid_target_genes = NULL,
                                 output_file = output_search)
@@ -83,23 +84,22 @@ ENCODE_download_metadata <- function(experiment_type,
   ## Extract the metadata ----
   metadata_df <- generateMetadata(summary_df, 
                                   download_method = download_method,
-                                  #required_cell_lines = required_cell_lines,
+                                  required_cell_lines = required_cell_lines,
                                   valid_file_format = valid_file_format,
                                   valid_genome_annotation = valid_genome_annotation,
                                   valid_output_type = valid_output_type,
                                   valid_nucleic_acid_type = valid_nucleic_acid_type,
                                   output_file = output_metadata,
-                                  overwrite_db = overwrite_db)
+                                  overwrite_db = T)
   
   
   ## Add category information ----
-  if ( str_detect(string = metadata_df[1,]$assay,
-                  pattern = "shRNA", 
-                  negate = F) ) {
+  if ( str_detect(string = metadata_df[1,]$assay, pattern = "shRNA", negate = F) ) {
     
-    metadata_df <- addTargetGeneCategory(metadata_df,
-                                         input_Category = paste0(here::here(), "/Additional_Files/Target_gene_categories.tsv"),
-                                         input_NMD = paste0(here::here(), "/Additional_Files/NMD.txt"),
+    
+    metadata_df <- addTargetGeneCategory(metadata_df = output_metadata,
+                                         input_Category = file.path(dependencies_path, "RBPs_subgroups.xlsx"),
+                                         input_NMD = file.path(dependencies_path, "NMD.txt"),
                                          output_file = output_metadata)
     
   }
@@ -131,14 +131,14 @@ ENCODE_download_metadata <- function(experiment_type,
 #' @return A list object containing the json downloaded from the ENCODE portal.
 #' @export
 getUrlResponse <- function(url, output_file = NULL) {
-  response <- GET(url)
-  r <- content(response, as = "text", encoding = "UTF-8")
+  response <- httr::GET(url)
+  r <- httr::content(response, as = "text", encoding = "UTF-8")
   
   if(!is.null(output_file)){
-    write(prettify(r, indent = 4), output_file)
+    write(jsonlite::prettify(r, indent = 4), output_file)
   }
   
-  return(fromJSON(r, flatten = T))
+  return(jsonlite::fromJSON(r, flatten = T))
 }
 
 #' Generates a summary of the ENCODE experiment search
@@ -371,6 +371,10 @@ generateMetadata <- function(summary_df,
       logger::ERROR("No valid download method provided. Only gene_silencing_series or experiments are allowed.")
     }
     
+    if (tg_df %>% nrow == 0) {
+      next;
+    }
+     
     ## Add final information and sort the columns
     tg_df <- tg_df %>%
       dplyr::mutate(target_gene = iter_target_gene, .before = cell_line) %>%
@@ -422,8 +426,10 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
                                     valid_file_format,
                                     valid_output_type,
                                     valid_genome_annotation){
+  
   ## Loop through every gene silencing series found for the target gene
   tg_df <- foreach(iter_gss = seq(nrow(summary_tg_df)), .combine = dplyr::bind_rows) %do%{
+    
     gss <- summary_tg_df[iter_gss, ]
     
     ## Gene silencing series information
@@ -439,6 +445,7 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
     
     ## Loop through every experiment found in the gene silencing series
     gss_df <- foreach(iter_experiment = seq(nrow(gss_experiments)), .combine = dplyr::bind_rows) %do%{
+      
       experiment <- gss_experiments[iter_experiment, ]
       
       experiment_id <- experiment$accession
@@ -450,7 +457,14 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
       experiment_additional_info <- getAdditionalInformation(experiment)
       
       ## Main metadata
-      experiment_sample_files <- getSampleFiles(experiment$files[[1]], valid_file_format, valid_output_type, valid_genome_annotation)
+      experiment_sample_files <- getSampleFiles(files = experiment$files[[1]],
+                                                valid_file_format = valid_file_format, 
+                                                valid_output_type = valid_output_type, valid_genome_annotation)
+      
+      if ( nrow(experiment_sample_files) == 0 ) {
+        next;
+      }
+      
       if(experiment_additional_info$nucleic_acid_type != valid_nucleic_acid_type) 
         return(cbind(experiment_sample_files, experiment_additional_info))
       
@@ -477,9 +491,11 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
     }
     
     ## Add the relevant information
-    gss_df <- gss_df %>%
-      dplyr::mutate(cell_line = gss_cell_line, 
-                    gene_silencing_series = gss_id, .before = sample_id)
+    
+    if (nrow(gss_df) > 0)
+      gss_df <- gss_df %>%
+        dplyr::mutate(cell_line = gss_cell_line, 
+                      gene_silencing_series = gss_id, .before = sample_id)
   }
   
   return(tg_df)
@@ -595,35 +611,7 @@ getAdditionalInformation <- function(related_dataset){
     return()
 }
 
-#' Gets the experiment's sample files
-#'
-#' @param files Data.frame containing all the files found for the experiment.
-#' @param valid_file_format (Optional) Required output file format of the
-#'   sample. Defaults to "BAM".
-#' @param valid_output_type (Optional) Required output type of the sample.
-#'   Defaults to "alignments".
-#' @param valid_genome_annotation (Optional) Required gene annotation version of
-#'   the sample to extract its metadata. Defaults to "V29".
-#'
-#' @return A data.frame with the metadata about the sample files, biological
-#'   replicate, output type, etc.
-#' @export
-getSampleFiles <- function(files,
-                           valid_file_format = "bam",
-                           valid_output_type = "alignments",
-                           valid_genome_annotation = "V29") {
-  sample_files_info <- files %>% 
-    dplyr::filter(file_format == valid_file_format) %>%
-    dplyr::filter(output_type %in% valid_output_type) %>%
-    dplyr::filter(genome_annotation == valid_genome_annotation) %>%
-    dplyr::select(accession, biological_replicates, file_format, output_type, genome_annotation, technical_replicates, mapped_run_type) %>%
-    tidyr::unnest(c(biological_replicates, technical_replicates)) %>%
-    dplyr::rename("bio_rep" = "biological_replicates",
-                  "tech_rep" = "technical_replicates",
-                  "sample_id" = "accession")
-  
-  return(sample_files_info)
-}
+
 
 #' Gets the experiment's RIN information
 #'
@@ -828,6 +816,7 @@ LoopExperiments <- function(summary_tg_df,
 }
 
 
+
 #' Extracts the metadata for a particular experiment
 #'
 #' @param experiment Data.frame containing the information of the experiment as
@@ -850,6 +839,7 @@ extractMetadataExperiment <- function(experiment,
                                       valid_file_format,
                                       valid_output_type,
                                       valid_genome_annotation){
+  
   experiment_id = experiment$accession
   
   logger::log_info("\t\t Starting experiment ", experiment_id, " (type = ", experiment_type, ").")
@@ -860,6 +850,7 @@ extractMetadataExperiment <- function(experiment,
   ## Main metadata
   experiment_sample_files <- getSampleFiles(files = experiment$files[[1]], 
                                             valid_file_format, valid_output_type, valid_genome_annotation)
+  
   if(experiment_additional_info$nucleic_acid_type != valid_nucleic_acid_type) 
     return(cbind(experiment_sample_files, experiment_additional_info))
   
@@ -883,6 +874,38 @@ extractMetadataExperiment <- function(experiment,
     dplyr::mutate(experiment_type = experiment_type, experiment_id = experiment_id, experiment_doi = experiment_doi, .before = "bio_rep") %>%
     dplyr::cbind(experiment_additional_info)
   
+}
+
+
+#' Gets the experiment's sample files
+#'
+#' @param files Data.frame containing all the files found for the experiment.
+#' @param valid_file_format (Optional) Required output file format of the
+#'   sample. Defaults to "BAM".
+#' @param valid_output_type (Optional) Required output type of the sample.
+#'   Defaults to "alignments".
+#' @param valid_genome_annotation (Optional) Required gene annotation version of
+#'   the sample to extract its metadata. Defaults to "V29".
+#'
+#' @return A data.frame with the metadata about the sample files, biological
+#'   replicate, output type, etc.
+#' @export
+getSampleFiles <- function(files,
+                           valid_file_format = "bam",
+                           valid_output_type = "alignments",
+                           valid_genome_annotation = "V29") {
+  
+  sample_files_info <- files %>% 
+    dplyr::filter(file_format == valid_file_format) %>%
+    dplyr::filter(output_type %in% valid_output_type) %>%
+    dplyr::filter(genome_annotation == valid_genome_annotation) %>%
+    dplyr::select(accession, biological_replicates, file_format, output_type, genome_annotation, technical_replicates, mapped_run_type) %>%
+    tidyr::unnest(c(biological_replicates, technical_replicates)) %>%
+    dplyr::rename("bio_rep" = "biological_replicates",
+                  "tech_rep" = "technical_replicates",
+                  "sample_id" = "accession")
+  
+  return(sample_files_info)
 }
 
 #' Adds the functional category to the target genes
@@ -910,7 +933,10 @@ addTargetGeneCategory <- function(metadata_df,
                                   input_NMD = "",
                                   output_file = ""){
   
-  target_RBPs_metadata <- readr::read_delim(file = input_Category, show_col_types = F)
+  
+  metadata_df <- readr::read_delim(file = metadata_df, delim = "\t", show_col_types = F)
+  target_RBPs_metadata <- xlsx::read.xlsx(file = input_Category, sheetIndex = 1) %>% drop_na()
+    
   
   metadata_df <- metadata_df %>% 
     dplyr::left_join(target_RBPs_metadata,# %>% 
@@ -921,6 +947,7 @@ addTargetGeneCategory <- function(metadata_df,
                      by = c("target_gene" = "name"))
   
   if(input_NMD != ""){
+    
     NMD_list <- readr::read_delim(input_NMD, show_col_types = F, delim = "\n") %>% 
       dplyr::rename("Name" = "Name\t") %>% 
       dplyr::mutate(across(Name, str_replace, "\t", "")) %>% 
@@ -936,28 +963,3 @@ addTargetGeneCategory <- function(metadata_df,
   
   return(metadata_df)
 }
-
-# addArchivedMetadata <- function(metadata_df,
-#                                 metadata_archived_path,
-#                                 input_target_gene_NMD,
-#                                 output_file = ""){
-#   metadata_archived <- readr::read_delim(metadata_archived_path, show_col_types = F)
-#   NMD_list <- readr::read_delim(input_target_gene_NMD, show_col_types = F, delim = "\n") %>% dplyr::rename("Name" = "Name\t") %>% mutate(across(Name, str_replace, "\t", "")) %>% pull(Name)
-#   
-#   metadata_archived <- metadata_archived %>%
-#     mutate(NMD = ifelse(target_gene %in% NMD_list, 1, 0))
-#   
-#   removed_genes <- setdiff(metadata_archived$target_gene, metadata_df$target_gene)
-#   metadata_combined <- dplyr::bind_rows(metadata_df %>%
-#                                           mutate(age = as.numeric(age)),
-#                                         metadata_archived %>%
-#                                           filter(target_gene %in% removed_genes))
-#   if(output_file != ""){
-#     write.table(metadata_combined, output_file, sep = "\t", row.names = F, quote = FALSE)
-#   }
-#   return(metadata_combined)
-# }
-# 
-
-
-

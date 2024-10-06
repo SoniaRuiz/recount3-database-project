@@ -4,7 +4,9 @@
 ## Required libraries ----
 
 ENCODE_download_bams <- function(metadata_df,
-                                 results_path) {
+                                 results_path,
+                                 regtools_path,
+                                 samtools_path) {
   
   
   
@@ -14,9 +16,9 @@ ENCODE_download_bams <- function(metadata_df,
   # main_samples_path <- here::here(paste0("results/",analysis_type,"/"))
   # metadata_path <- here::here(paste0("metadata/metadata_",analysis_type,"_samples.tsv"))
   
-  tools_path <- "/home/grocamora/tools/"
-  regtools_path <- paste0(tools_path, "regtools/build/")
-  samtools_path <- paste0(tools_path, "samtools/bin/")
+  # tools_path <- "/home/grocamora/tools/"
+  # regtools_path <- paste0(tools_path, "regtools/build/")
+  # samtools_path <- paste0(tools_path, "samtools/bin/")
   # bedtools_path <- paste0(tools_path, "bedtools/")
   # fordownload_path <- paste0(tools_path, "fordownload/")
   
@@ -75,7 +77,7 @@ ENCODE_download_bams <- function(metadata_df,
     RBP_metadata <- metadata_RBPs %>% 
       dplyr::filter(target_gene == target_RBP) %>% 
       dplyr::arrange(experiment_type)
-    RBP_path <- paste0(results_path, target_RBP, "/")
+    RBP_path <- file.path(results_path, target_RBP, "/")
     RBP_clusters <- RBP_metadata %>%
       dplyr::pull(experiment_type) %>% unique()
     
