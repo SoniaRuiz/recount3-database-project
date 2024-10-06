@@ -64,6 +64,7 @@ source("init_age.R")
 ### [init_ENCODE.R](https://github.com/SoniaRuiz/recount3-database-project/blob/main/init_ENCODE.R)
 
 The init_ENCODE.R script downloads BAM files from the ENCODE platform, extracts junctions, and generates a junction database.
+BAM files downloaded correspond to the RNA-binding proteins involved in post-transcriptional processes published by [Van Nostrand et at. 2020](https://www.nature.com/articles/s41586-020-2077-3).
 
 ```R
 source("init_ENCODE.R")
