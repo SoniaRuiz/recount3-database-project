@@ -41,7 +41,7 @@ cd recount3-database-project
 
 ## Usage
 
-### init.R
+### [init.R](https://github.com/SoniaRuiz/recount3-database-project/blob/main/init.R)
 
 The init.R script downloads publicly available junction data from any recount3 project and builds a junction database. 
 
@@ -50,7 +50,7 @@ The init.R script downloads publicly available junction data from any recount3 p
 source("init.R")
 ```
 
-### init_age.R
+### [init_age.R](https://github.com/SoniaRuiz/recount3-database-project/blob/main/init_age.R)
 
 The init_age.R script utilizes previously downloaded junction data from the GTEx project, stratifying samples by age before constructing a junction database. 
 
@@ -61,7 +61,7 @@ It starts the age sample clustering using the age groups "20-39", "40-59" and "6
 source("init_age.R")
 ```
 
-### init_ENCODE.R
+### [init_ENCODE.R](https://github.com/SoniaRuiz/recount3-database-project/blob/main/init_ENCODE.R)
 
 The init_ENCODE.R script downloads BAM files from the ENCODE platform, extracts junctions, and generates a junction database.
 
@@ -73,19 +73,27 @@ source("init_ENCODE.R")
 
 ### init.R:
 
-* download_recount3_data()
-* prepare_recount3_data()
-* junction_pairing()
-* get_all_annotated_split_reads()
-* get_all_raw_jxn_pairings()
-* tidy_data_pior_sql()
-* generate_transcript_biotype_percentage()
-* generate_recount3_tpm()
-* sql_database_generation()
+**Data download and processing:**
+* [*download_recount3_data()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/01_download_recount3_data.R): downloads, process and annotates, using a given Ensembl annotation, the exon-exon junction split read data from the recount3 project indicated.
+* [*prepare_recount3_data()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/02_prepare_recount3_data.R): groups the processed split-read data by sample cluster for a given recount3 project.
+
+**Junction pairing:**
+* [*junction_pairing()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/04_junction_pairing.R): pairs novel junctions and annotated introns across the samples of each sample cluster.
+
+**Junction processing prior databasing:**
+* [*get_all_annotated_split_reads()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/08_get_all_annotated_split_reads.R): loops through the samples clusters from the current recount3 project and obtains all unique split reads found across their samples.
+* [*get_all_raw_jxn_pairings()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/09_get_all_raw_jxn_pairings.R): loops through the samples clusters from the current recount3 project and obtains all junction pairings.
+* [*tidy_data_pior_sql()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/12_tidy_data_pior_sql.R): discards ambiguous junctions and prepares the data prior generation of the SQL database.
+* [*generate_transcript_biotype_percentage()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/10_generate_transcript_biotype_percentage.R): calculates the percentage of protein-coding transcripts in which a given junction may appear.
+* [*generate_recount3_tpm()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/11_generate_recount3_tpm.R): obtains and transforms (scaled by library size) raw counts data. Calculates the median gene TPM across all samples from each sample cluster.
+
+**SQLITE database generation:**
+* [*sql_database_generation()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/14_sql_database_generation.R): creates the different Database tables sequentially (see [IntroVerse: a comprehensive database of introns across human tissues](https://doi.org/10.1093/nar/gkac1056))
 
 ### init_age.R:
-* age_stratification_annotate()
-* age_stratification_junction_pairing()
+* [*age_stratification_init_data()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/23_age_stratification_init_data.R): clusters the GTEx v8 samples by age supergroup, i.e. "20-39", "40-59" and "60-79" years-old.
+* [*age_stratification_annotate()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/25_age_stratification_annotate.R): creates the split reads annotation files per age group.
+* [*age_stratification_junction_pairing()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/26_age_stratification_junction_pairing.R): performs the split read junction pairing between novel junctions and annotated introns across the samples of each age group.
 * get_all_annotated_split_reads()
 * get_all_raw_jxn_pairings()
 * generate_recount3_tpm()
@@ -94,9 +102,9 @@ source("init_ENCODE.R")
 * sql_database_generation()
 
 ### init_ENCODE.R:
-* ENCODE_download_metadata()
-* ENCODE_download_bams()
-* prepare_encode_data()
+* [*ENCODE_download_metadata()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/28_ENCODE_download_metadata.R): downloads metadata from the gene-silencing knockdown experiments of RBPs from the ENCODE platform.
+* [*ENCODE_download_bams()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/29_ENCODE_download_bams.R): downloads the BAM files corresponding to the gene-silencing knockdown experiments of RBPs from the ENCODE platform.
+* [*prepare_encode_data()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/30_ENCODE_prepare_encode_data.R): extracts the exon-exon junction split read data from each knockdown ENCODE experiments, processes and annotates them.
 * junction_pairing()
 * get_all_annotated_split_reads()
 * get_all_raw_jxn_pairings()
