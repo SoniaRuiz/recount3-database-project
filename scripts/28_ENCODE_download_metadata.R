@@ -1,5 +1,3 @@
-## source("/home/sruiz/PROJECTS/ENCODE_Metadata_Extraction/Metadata_Extraction_Script.R")
-
 
 
 ## Load additional helper functions ----

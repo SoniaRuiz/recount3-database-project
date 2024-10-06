@@ -96,7 +96,7 @@ if ( !file.exists(metadata_path) ) {
 
 if (analysis_type == "shRNA") {
   metadata <- metadata %>%
-    dplyr::filter(if_any(c("Splicing regulation", Spliceosome, "Novel RBP", "Exon Junction Complex", NMD), ~ . != 0))
+    dplyr::filter(if_any(c("Splicing.regulation", Spliceosome, "Novel.RBP", "Exon.Junction.Complex", NMD), ~ . != 0))
 }
 
 target_RBPs <- metadata %>% dplyr::pull(target_gene) %>% unique()

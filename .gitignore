@@ -55,7 +55,10 @@ results/
 
 markdown/
 logs/
-dependencies/
+dependencies/*
+!dependencies/README
+!dependencies/NMD.txt
+!dependencies/RBPs_subgroups.xlsx
 
 analysis.R
 power_calculations.R
