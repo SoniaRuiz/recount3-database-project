@@ -10,16 +10,17 @@
 #' @export
 #'
 #' @examples
-sql_create_master_tables <- function(database.path,
-                                     gtf.version,
-                                     database.folder,
-                                     results.folder,
-                                     discard.minor.introns = F) {
+SqlCreateMasterTables <- function(database.path,
+                                  gtf.version,
+                                  database.folder,
+                                  results.folder,
+                                  dependencies.folder,
+                                  discard.minor.introns = F) {
   
   
   logger::log_info("loading GRCh38 reference...")
   
-  hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
+  hg38 <- rtracklayer::import(con = paste0(dependencies.folder,
                                            "/Homo_sapiens.GRCh38.",gtf.version,".chr.gtf"))
   
   ##########################################
@@ -203,20 +204,20 @@ sql_create_master_tables <- function(database.path,
   ## GENES - CREATE GENE TABLE
   ######################################
   
-  sql_create_master_table_gene(database.path = database.path,
-                               hg38 = hg38,
-                               # protein_biotype = df_protein,
-                               gene.ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id) )
+  SqlCreateMasterTableGene(database.path = database.path,
+                           hg38 = hg38,
+                           gene.ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id) )
   
   
   ######################################
   ## TX_JUNCTION - CREATE TX TABLE
   ######################################
   
-  sql_create_master_table_transcript(database.path = database.path,
-                                     gene.ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
-                                     hg38 = hg38,
-                                     tx.ids = df_introns_introverse_tidy %>% unnest(tx_id_junction) %>% distinct(tx_id_junction))
+  SqlCreateMasterTableTranscript(database.path = database.path,
+                                 gene.ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
+                                 dependencies.folder = dependencies.folder,
+                                 hg38 = hg38,
+                                 tx.ids = df_introns_introverse_tidy %>% unnest(tx_id_junction) %>% distinct(tx_id_junction))
   
   
   ############################################
@@ -231,8 +232,7 @@ sql_create_master_tables <- function(database.path,
   ## Add the GENE ID for the foreign key
   df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
     unnest(tx_id_junction) %>% 
-    left_join(df_transcripts,
-              by = c("tx_id_junction" = "transcript_id")) %>%
+    left_join(df_transcripts, by = c("tx_id_junction" = "transcript_id")) %>%
     dplyr::select(-gene_id, -tx_id_junction) %>%
     dplyr::rename(transcript_id = id)  %>%
     group_by(ref_junID) %>%
@@ -250,27 +250,22 @@ sql_create_master_tables <- function(database.path,
   logger::log_info(" --> adding the MaxEntScan info ...")
   
   wd <- getwd()
-  if ( !file.exists(paste0(dependencies_folder, 
-                           "/Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
+  if ( !file.exists(file.path(dependencies.folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
     logger::log_info(paste0("ERROR! File dependency 'Homo_sapiens.GRCh38.dna.primary_assembly.fa' does not exist within the specified dependencies folder."))
     break;
   }
   
   ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_introns_introverse_tidy %>% dplyr::rename(junID = ref_junID) %>% distinct(junID, .keep_all = T),
-                                                 max_ent_tool_path = paste0(dependencies_folder, "/fordownload/"),
-                                                 homo_sapiens_fasta_path = paste0(dependencies_folder, 
-                                                                                  "/Homo_sapiens.GRCh38.dna.primary_assembly.fa") )
+  all_split_reads_tidy <- GenerateMaxEntScore(junc_tidy = df_introns_introverse_tidy %>% dplyr::rename(junID = ref_junID) %>% distinct(junID, .keep_all = T),
+                                              max_ent_tool_path = paste0(dependencies.folder, "/fordownload/"),
+                                              homo_sapiens_fasta_path = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa") )
   rm(df_introns_introverse_tidy)
   gc()
   
   all_split_reads_tidy <- all_split_reads_tidy %>% as_tibble()
   
   all_split_reads_tidy <- all_split_reads_tidy %>% 
-    dplyr::select(-donorSeqStart,
-                  -donorSeqStop,
-                  -AcceptorSeqStart,
-                  -AcceptorSeqStop) %>%
+    dplyr::select(-c(donorSeqStart, donorSeqStop, AcceptorSeqStart, AcceptorSeqStop)) %>%
     dplyr::rename(ref_donor_sequence = donor_sequence,
                   ref_acceptor_sequence = acceptor_sequence)
   
@@ -288,38 +283,26 @@ sql_create_master_tables <- function(database.path,
   
   df_all_introns <- df_all_introns %>%
     dplyr::select(-one_of("junID", "ref_ss5score", "ref_ss3score")) %>% 
-    dplyr::rename(ref_mes5ss = ss5score, 
-                  ref_mes3ss = ss3score) %>%
+    dplyr::rename(ref_mes5ss = ss5score, ref_mes3ss = ss3score) %>%
     dplyr::relocate(ref_junID) %>%
     dplyr::relocate(c(ref_mes5ss, ref_mes3ss), .before = transcript_id ) 
   
-  
   df_all_introns %>% as_tibble()
-  
   
   ################################################
   ## INTRONS - ADD THE CONSERVATION AND CDTS INFO
   ################################################
   
   df_all_introns %>% as_tibble()
-  
   logger::log_info("adding CDTS and Conservation scores...")
   
-  df_all_introns <- generate_cdts_phastcons_scores(db_introns = df_all_introns %>% 
-                                                     distinct(ref_junID, .keep_all = T) %>%
-                                                     dplyr::rename("junID" = "ref_junID") %>%
-                                                     as_tibble(),
-                                                   intron_size = c(100),
-                                                   phastcons_type = 17) %>%
-    as_tibble()
+  df_all_introns <- GenerateCdtsPhastconsScores(dependencies.folder = dependencies.folder,
+                                                db.introns = df_all_introns %>% distinct(ref_junID, .keep_all = T) %>%
+                                                  dplyr::rename("junID" = "ref_junID") %>% as_tibble(),
+                                                intron.size = 100, phastcons.type = 17) %>% as_tibble()
   
-  df_all_introns <- df_all_introns  %>%
-    dplyr::rename("ref_junID" = "junID") %>% 
-    mutate_if(is.numeric, ~replace_na(., 0))
-
-  
+  df_all_introns <- df_all_introns %>% dplyr::rename("ref_junID" = "junID") %>% mutate_if(is.numeric, ~replace_na(., 0))
   df_all_introns %>% as_tibble()
-  
   
   ######################################
   ## INTRONS - ADD CLINVAR DATA
@@ -327,10 +310,8 @@ sql_create_master_tables <- function(database.path,
   
   logger::log_info("adding the ClinVar data...")
   
+  df_all_introns_gr <- AddClinvarData(df.all.introns = df_all_introns, dependencies.folder)
   
-  df_all_introns_gr <- add_clinvar_data(df.all.introns = df_all_introns)
-  
-   
   df_all_introns_gr %>% head()
   df_all_introns_gr %>% as_tibble() %>% filter(clinvar == T) %>% dplyr::select(ref_junID, clinvar)
  
@@ -343,20 +324,15 @@ sql_create_master_tables <- function(database.path,
   logger::log_info("adding the IAOD intron data...")
   
   ## Load intron type files
-  u12_introns_gr <- readRDS(file = paste0(dependencies_folder,
-                                       "/minor_introns_tidy.rds")) %>%
-    GRanges() %>%
-    diffloop::addchr()
+  u12_introns_gr <- readRDS(file = file.path(dependencies.folder, "minor_introns_tidy.rds")) %>% GRanges() %>% diffloop::addchr()
   
   ## Add a new column to incorporate info about intron type
   elementMetadata(df_all_introns_gr)[, "u2_intron"] = T
   
   ## MINOR INTRON
   logger::log_info("Getting junctions spliced out by the minor spliceosome.")
-  overlaps <- GenomicRanges::findOverlaps(query = u12_introns_gr,
-                                          subject = df_all_introns_gr,
-                                          ignore.strand = FALSE,
-                                          type = "equal")
+  overlaps <- GenomicRanges::findOverlaps(query = u12_introns_gr, subject = df_all_introns_gr,
+                                          ignore.strand = FALSE, type = "equal")
   
   logger::log_info(queryHits(overlaps) %>% length(), " introns spliced by the minor spliceosome!")
   df_all_introns_gr[subjectHits(overlaps),]$u2_intron <- F
@@ -372,24 +348,20 @@ sql_create_master_tables <- function(database.path,
     as_tibble()
   
   if (discard.minor.introns) {
-    
     df_all_introns_tidy <- df_all_introns_tidy %>%
       filter(u2_intron == T) %>%
       dplyr::select(-u2_intron)
-    
-    }
+  }
   
   logger::log_info(df_all_introns_tidy$ref_junID %>% unique %>% length(), " introns to be stored!")
-  # df_all_introns_tidy %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(misspliced)
   
   #########################################
   ## INTRONS - ADD THE TRANSCRIPT BIOTYPE
   #########################################
   
-  df_biotype_junID <- readRDS(file = paste0(database.folder, "/all_split_reads_qc_level1_PC_biotype.rds")) %>%
-    as_tibble()
+  df_biotype_junID <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds")) %>% as_tibble()
   
-  any(str_detect(df_biotype_junID$junID, pattern = "\\*"))
+  if (any(str_detect(df_biotype_junID$junID, pattern = "\\*"))){stop("Still junctions with * as strand!")}
   
   df_all_introns_tidy <- df_all_introns_tidy %>%
     inner_join(y = df_biotype_junID %>% dplyr::select(junID, protein_coding),
@@ -467,8 +439,7 @@ sql_create_master_tables <- function(database.path,
   
   ## POPULATE INTRON TABLE ----------------------------------------------------
   df_all_introns_tidy_final <- df_all_introns_tidy %>% 
-    dplyr::rename(ref_length = width,
-                  ref_coordinates = ref_junID) %>%
+    dplyr::rename(ref_length = width, ref_coordinates = ref_junID) %>%
     distinct(ref_coordinates, .keep_all = T) %>%
     tibble::rowid_to_column("ref_junID")
   
@@ -481,12 +452,9 @@ sql_create_master_tables <- function(database.path,
     break;
   }
   
-  DBI::dbAppendTable(conn = con,
-                     name = "intron", 
-                     value = df_all_introns_tidy_final)
+  DBI::dbAppendTable(conn = con, name = "intron", value = df_all_introns_tidy_final)
   
-  logger::log_info("'Intron' master table populated! ", 
-                   df_all_introns_tidy_final %>% distinct(ref_junID) %>% nrow(), " annotated introns stored!" )
+  logger::log_info("'Intron' master table populated! ", df_all_introns_tidy_final %>% distinct(ref_junID) %>% nrow(), " annotated introns stored!" )
   
   ## CREATE INDEXES TO SPEED UP QUERIES ------------------------------------------
   query <- paste0("CREATE UNIQUE INDEX 'index_intron' ON 'intron'(ref_junID)");
@@ -499,8 +467,6 @@ sql_create_master_tables <- function(database.path,
   res <- DBI::dbSendQuery(conn = con, statement = query)
   DBI::dbClearResult(res)
   
-  
-  
   #############################################
   ## B) NOVEL JUNCTION - ADD MAXENTSCAN INFO 
   #############################################
@@ -508,8 +474,8 @@ sql_create_master_tables <- function(database.path,
   logger::log_info("adding MaxEntScan scores to the NOVEL JUNCTONS...")
   
   df_all_novel_raw_tidy <- df_all_distances_pairings %>%
-    mutate( start = novel_start %>% as.integer(),
-            end = novel_end %>% as.integer()) %>%
+    mutate(start = novel_start %>% as.integer(),
+           end = novel_end %>% as.integer()) %>%
     dplyr::select(seqnames = novel_seq,
                   start, end, 
                   strand = novel_strand,
@@ -521,20 +487,15 @@ sql_create_master_tables <- function(database.path,
   wd <- getwd()
   
   ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID) %>% distinct(junID, .keep_all = T),
-                                                 max_ent_tool_path = paste0(dependencies_folder,"/fordownload/"),
-                                                 homo_sapiens_fasta_path = paste0(dependencies_folder,
-                                                                                  "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
+  all_split_reads_tidy <- GenerateMaxEntScore(junc_tidy = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID) %>% distinct(junID, .keep_all = T),
+                                              max_ent_tool_path = paste0(dependencies.folder,"/fordownload/"),
+                                              homo_sapiens_fasta_path = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
   
   all_split_reads_tidy %>% as_tibble()
   
   all_split_reads_tidy <- all_split_reads_tidy %>% 
-    dplyr::select(-donorSeqStart,
-                  -donorSeqStop,
-                  -AcceptorSeqStart,
-                  -AcceptorSeqStop) %>%
-    dplyr::rename(novel_donor_sequence = donor_sequence,
-                  novel_acceptor_sequence = acceptor_sequence)
+    dplyr::select(-c(donorSeqStart, donorSeqStop, AcceptorSeqStart, AcceptorSeqStop)) %>%
+    dplyr::rename(novel_donor_sequence = donor_sequence, novel_acceptor_sequence = acceptor_sequence)
   
   setwd(wd)
   
@@ -543,8 +504,7 @@ sql_create_master_tables <- function(database.path,
     mutate(novel_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
   
   if ((setdiff(df_all_novels_tidy$junID, df_all_novels_tidy$novel_junID) %>% length()) > 0) {
-    logger::log_info("ERROR! Novel junctions have been analysed under different sorting.")
-    break;
+    stop("ERROR! Novel junctions have been analysed under different sorting.")
   }
   
   rm(all_split_reads_tidy)
@@ -562,17 +522,15 @@ sql_create_master_tables <- function(database.path,
   ################################################
   
   df_all_novels_tidy %>% as_tibble()
+  logger::log_info("\t Adding CDTS and Conservation scores to the novel junctions ...")
 
-  logger::log_info(paste0(Sys.time(), " - adding CDTS and Conservation scores to the novel junctions ..."))
-
-  df_all_novels_tidy <- generate_cdts_phastcons_scores(db_introns = df_all_novels_tidy %>%
-                                                         distinct(novel_junID, .keep_all = T) %>%
-                                                         dplyr::rename(junID = "novel_junID") %>%
-                                                         as_tibble(),
-                                                       intron_size = 100,
-                                                       phastcons_type = 17) %>%
-    as_tibble() %>%
-    dplyr::rename("novel_junID" = "junID")  %>% 
+  df_all_novels_tidy <- GenerateCdtsPhastconsScores(dependencies.folder = dependencies.folder,
+                                                    db.introns = df_all_novels_tidy %>%
+                                                      distinct(novel_junID, .keep_all = T) %>% dplyr::rename(junID = "novel_junID") %>% as_tibble(),
+                                                    intron.size = 100,
+                                                    phastcons.type = 17) %>% 
+    as_tibble() %>% 
+    dplyr::rename("novel_junID" = "junID") %>% 
     mutate_if(is.numeric, ~replace_na(., 0))
 
   df_all_novels_tidy %>% as_tibble()
@@ -584,7 +542,7 @@ sql_create_master_tables <- function(database.path,
   
   logger::log_info("adding the ClinVar data...")
   
-  df_all_novels_tidy_gr <- add_clinvar_data(df.all.introns = df_all_novels_tidy)
+  df_all_novels_tidy_gr <- AddClinvarData(df.all.introns = df_all_novels_tidy, dependencies.folder)
   
   df_all_novels_tidy_gr %>% head()
   df_all_novels_tidy_gr %>% as_tibble() %>% filter(clinvar == T) %>% dplyr::select(novel_junID, clinvar)
@@ -597,8 +555,7 @@ sql_create_master_tables <- function(database.path,
   
   df_all_novels_tidy_final <- df_all_novels_tidy_gr %>% 
     as_tibble() %>%
-    inner_join(y = df_all_introns_tidy_final %>%
-                 dplyr::select(ref_junID, ref_coordinates),
+    inner_join(y = df_all_introns_tidy_final %>% dplyr::select(ref_junID, ref_coordinates),
                by = c("ref_junID" = "ref_coordinates" )) %>%
     dplyr::select(-ref_junID) %>%
     dplyr::rename(ref_junID = ref_junID.y) %>% 
@@ -656,19 +613,13 @@ sql_create_master_tables <- function(database.path,
     tibble::rowid_to_column("novel_junID") %>%
     dplyr::rename(novel_length = width)
   
-  df_all_novels_tidy_final
   
   if (any(duplicated(df_all_novels_tidy_final$novel_coordinates))) {
     logger::log_info("ERROR! some novel junctions are duplicated")
     break;
   }
   
-  df_all_novels_tidy_final %>%
-    dplyr::count(novel_type)
-  
-  DBI::dbAppendTable(conn = con,
-                     name = "novel", 
-                     value = df_all_novels_tidy_final)
+  DBI::dbAppendTable(conn = con, name = "novel", value = df_all_novels_tidy_final)
   
   logger::log_info("'Novel' master table populated! ", 
                    df_all_novels_tidy_final %>% distinct(novel_junID) %>% nrow(), " novel junctions stored!" )

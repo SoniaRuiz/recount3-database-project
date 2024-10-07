@@ -3,7 +3,7 @@
 # 1. Load libraries and variables ----
 ## Required libraries ----
 
-ENCODE_download_bams <- function(metadata_df,
+ENCODEDownloadBams <- function(metadata_df,
                                  results_path,
                                  regtools_path,
                                  samtools_path) {
@@ -82,18 +82,18 @@ ENCODE_download_bams <- function(metadata_df,
       dplyr::pull(experiment_type) %>% unique()
     
     ## If the junctions files are already found
-    if(checkDownloadedFiles(RBP_metadata, RBP_path)){
+    if(CheckDownloadedFiles(RBP_metadata, RBP_path)){
       logger::log_info("\t\t Ignoring download and extraction. All junctions already extracted!")
       next
     }
     
     ## Create the subfolders
-    createSubFolders(RBP_metadata,
+    CreateSubFolders(RBP_metadata,
                      RBP_path,
                      RBP_clusters,
                      generate_script = T)
     
-    downloadExtractBamFiles(RBP_metadata = RBP_metadata,
+    DownloadExtractBamFiles(RBP_metadata = RBP_metadata,
                             RBP_path = RBP_path,
                             num_cores = download_cores,
                             samtools_threads = samtools_threads,
@@ -121,7 +121,7 @@ ENCODE_download_bams <- function(metadata_df,
 #'
 #' @return NULL
 #' @export
-createSubFolders <- function(RBP_metadata,
+CreateSubFolders <- function(RBP_metadata,
                              RBP_path, 
                              RBP_clusters,
                              generate_script = T) {
@@ -137,7 +137,7 @@ createSubFolders <- function(RBP_metadata,
     ## the cluster folder. However, it is not recommended to use this script to
     ## download the files.
     if (generate_script == T) {
-      generateDownloadScript(cluster_metadata, cluster_path)
+      GenerateDownloadScript(cluster_metadata, cluster_path)
     }
   }
 }
@@ -156,14 +156,14 @@ createSubFolders <- function(RBP_metadata,
 #'
 #' @return NULL
 #' @export
-generateDownloadScript <- function(cluster_metadata,
+GenerateDownloadScript <- function(cluster_metadata,
                                    cluster_path) {
   logger::log_info("\t\t Generating the download scripts in ", cluster_path)
   
   ## Generate the script's text
   download_script <- "# Script to download the .bam files\n"
   for (i in 1:nrow(cluster_metadata)) {
-    download_link <- getDownloadLinkMetadata(cluster_metadata[i, ])
+    download_link <- GetDownloadLinkMetadata(cluster_metadata[i, ])
     download_script <- paste0(download_script, "wget -c ", download_link, "\n")
   }
   
@@ -188,7 +188,7 @@ generateDownloadScript <- function(cluster_metadata,
 #'
 #' @return Download link for the sample.
 #' @export
-getDownloadLinkMetadata <- function(cluster_metadata_row){
+GetDownloadLinkMetadata <- function(cluster_metadata_row){
   sample_id <- cluster_metadata_row %>% pull(sample_id)
   sample_format <- cluster_metadata_row %>% pull(file_format)
   
@@ -230,7 +230,7 @@ getDownloadLinkMetadata <- function(cluster_metadata_row){
 #'
 #' @return NULL
 #' @export
-downloadExtractBamFiles <- function(RBP_metadata,
+DownloadExtractBamFiles <- function(RBP_metadata,
                                     RBP_path,
                                     num_cores = 4,
                                     samtools_threads = 1,
@@ -239,7 +239,7 @@ downloadExtractBamFiles <- function(RBP_metadata,
                                     regtools_path = "",
                                     overwrite = F) {
   logger::log_info("\t Starting the download and extraction process.")
-  if(checkDownloadedFiles(RBP_metadata, RBP_path)){
+  if(CheckDownloadedFiles(RBP_metadata, RBP_path)){
     logger::log_info("\t\t Ignoring download and extraction. All junctions already extracted!")
     return()
   }
@@ -251,12 +251,12 @@ downloadExtractBamFiles <- function(RBP_metadata,
   doParallel::registerDoParallel(cl)
   
   ## Multiprocessing loop
-  metrics <- foreach(i = 1:nrow(RBP_metadata), .export = "getDownloadLinkMetadata", .packages = "tidyverse") %dopar% {
+  metrics <- foreach(i = 1:nrow(RBP_metadata), .export = "GetDownloadLinkMetadata", .packages = "tidyverse") %dopar% {
     ## Definition of the variables
     sample_id <- RBP_metadata[i, ] %>% pull(sample_id)
     sample_cluster <- RBP_metadata[i, ] %>% pull(experiment_type)
     sample_target_gene = RBP_metadata[i, ] %>% pull(target_gene)
-    download_link <- getDownloadLinkMetadata(RBP_metadata[i, ])
+    download_link <- GetDownloadLinkMetadata(RBP_metadata[i, ])
     file_path <- paste0(RBP_path, sample_cluster, "/", sample_id, ".bam")
     sort_path <- paste0(RBP_path, sample_cluster, "/", sample_id, ".bam.sort")
     junc_path <- paste0(RBP_path, sample_cluster, "/", sample_id, ".bam.sort.s0.junc")
@@ -324,7 +324,7 @@ downloadExtractBamFiles <- function(RBP_metadata,
 #'
 #' @return Whether the JUNC files for the input metadata exists or not.
 #' @export
-checkDownloadedFiles <- function(RBP_metadata,
+CheckDownloadedFiles <- function(RBP_metadata,
                                  RBP_path){
   file_names <- apply(RBP_metadata, 1, function(x) {
     paste0(RBP_path, x["experiment_type"], "/", x["sample_id"], ".bam.sort.s0.junc")

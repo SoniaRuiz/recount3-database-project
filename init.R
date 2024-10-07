@@ -120,6 +120,8 @@ for (gtf_version in gtf_versions) {
   download_recount3_data(recount3.project.IDs = recount3_project_IDs,
                          project.name = project_name,
                          gtf.version = gtf_version,
+                         blacklist_path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
+                         gtf_path = file.path(args$dependencies_folder, paste0("/Homo_sapiens.GRCh38.", gtf.version, ".chr.gtf")),
                          data.source = data_source,
                          database.folder = database_folder,
                          results.folder = results_folder)
@@ -132,17 +134,17 @@ for (gtf_version in gtf_versions) {
                         supporting.reads = supportive_reads,
                         num.cores = 4)
 
-  junction_pairing(recount3.project.IDs = recount3_project_IDs,
+  JunctionPairing(recount3.project.IDs = recount3_project_IDs,
                    results.folder = results_folder,
                    replace = T,
                    num.cores = 8)
 
-  get_all_annotated_split_reads(recount3.project.IDs = recount3_project_IDs,
-                                database.folder = database_folder,
-                                results.folder = results_folder,
-                                num.cores = 8)
+  GetAllAnnotatedSplitReads(recount3.project.IDs = recount3_project_IDs,
+                            database.folder = database_folder,
+                            results.folder = results_folder,
+                            num.cores = 8)
 
-  get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
+  GetAllRawJxnPairings(recount3.project.IDs = recount3_project_IDs,
                            database.folder = database_folder,
                            results.folder = results_folder,
                            num.cores = 8)
@@ -151,18 +153,18 @@ for (gtf_version in gtf_versions) {
   recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
 
 
-  tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
-                     database.folder = database_folder,
-                     levelqc1.folder = database_folder,
-                     results.folder = results_folder)
+  TidyDataPiorSQL(recount3.project.IDs = recount3_project_IDs,
+                  database.folder = database_folder,
+                  levelqc1.folder = database_folder,
+                  results.folder = results_folder)
 
 
-  generate_transcript_biotype_percentage(gtf.version = gtf_version,
-                                         database.folder = database_folder,
-                                         results.folder = results_folder)
+  GenerateTranscriptBiotypePercentage(gtf.version = gtf_version,
+                                      database.folder = database_folder,
+                                      results.folder = results_folder)
 
 
-  generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
+  GenerateRecount3TPM(recount3.project.IDs = recount3_project_IDs,
                         data.source = data_source,
                         tpm.folder = tpm_folder,
                         results.folder = results_folder)
@@ -170,7 +172,7 @@ for (gtf_version in gtf_versions) {
 
   database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
 
-  sql_database_generation(database.path = database_path,
+  SqlDatabaseGeneration(database.path = database_path,
                           recount3.project.IDs = recount3_project_IDs,
                           remove.all = F,
                           database.folder = database_folder,

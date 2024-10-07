@@ -7,11 +7,11 @@
 #' @export
 #'
 #' @examples
-tidy_data_pior_sql <- function (recount3.project.IDs,
-                                all.clusters = NULL,
-                                database.folder,
-                                levelqc1.folder,
-                                results.folder) {
+TidyDataPiorSQL <- function (recount3.project.IDs,
+                             database.folder,
+                             levelqc1.folder,
+                             results.folder,
+                             all.clusters = NULL) {
   
   
   ############################################
@@ -21,8 +21,7 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   logger::log_info("Loading split reads QC level 1 ...")
   
   ## Load base recount3 object containing the split reads passing the QC criteria
-  all_split_reads_details_qc_level1 <- readRDS(file = paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds")) %>%
-      as_tibble()
+  all_split_reads_details_qc_level1 <- readRDS(file = file.path(levelqc1.folder, "all_split_reads_qc_level1.rds")) %>%  as_tibble()
   
   all_split_reads_details_qc_level1 %>% nrow()
   all_split_reads_details_qc_level1 %>% head()
@@ -34,18 +33,15 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   
   logger::log_info("Loading split reads QC level 2 ...")
   
-  all_split_reads_details_qc_level2 <- readRDS(file = paste0(database.folder, "/all_split_reads_qc_level2.rds"))  %>%
-    as_tibble()
+  all_split_reads_details_qc_level2 <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level2.rds")) %>% as_tibble()
   
   all_split_reads_details_qc_level2 %>% nrow()
   all_split_reads_details_qc_level2 %>% head()
   
   ## This should be zero
-  if ( setdiff(all_split_reads_details_qc_level2$junID, 
-               all_split_reads_details_qc_level1$junID) %>% 
-       length() > 0) {
+  if ( setdiff(all_split_reads_details_qc_level2$junID, all_split_reads_details_qc_level1$junID) %>% length() > 0) {
     logger::log_info("ERROR! Some of the annotated split reads that passed the 2nd QC level are not found within the split reads from the 1st QC level.")
-    break;
+    stop("ERROR! Some of the annotated split reads that passed the 2nd QC level are not found within the split reads from the 1st QC level.");
   }
   
   
@@ -71,10 +67,8 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
                                                          results.folder)
   ## Merge with split reads LEVEL 1 to get strand info
   df_never_misspliced <- df_never_misspliced %>% 
-    inner_join(y = all_split_reads_details_qc_level1 %>%
-                 dplyr::select(junID, strand),
-               by = c("ref_junID" = "junID")) %>%
-    as_tibble()
+    inner_join(y = all_split_reads_details_qc_level1 %>% dplyr::select(junID, strand),
+               by = c("ref_junID" = "junID")) %>% as_tibble()
   
   
   ############################################

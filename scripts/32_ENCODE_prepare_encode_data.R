@@ -1,39 +1,37 @@
-prepare_encode_data <- function(metadata,
-                                
-                                RBP_source_path,
-                                results_path,
-                                database_path,
-                                
-                                gtf_path,
-                                gtf_version,
-                                
-                                ENCODE_silencing_series,
-                                num_cores = 8) {
+PrepareEncodeData <- function(metadata,
+                              RBP.source.path,
+                              results.path,
+                              database.path,
+                              gtf.path,
+                              gtf.version,
+                              blacklist.path,
+                              ENCODE.silencing.series,
+                              num.cores = 8) {
   
   
   logger::log_info(paste0(Sys.time(), "\t\t starting junction reading for the RPBs..."))
 
-  junctionReading(metadata = metadata,
-
-                  RBP_source_path = RBP_source_path,
-                  results_path = results_path,
-                  database_path = database_path,
-                  ENCODE_silencing_series,
-                  num_cores = 8)
+  JunctionReading(metadata = metadata,
+                  RBP.source.path = RBP.source.path,
+                  results.path = results.path,
+                  database.path = database.path,
+                  ENCODE.silencing.series,
+                  num.cores = 8)
   gc()
 
   logger::log_info(paste0(Sys.time(), "\t\t starting the creation of Level QC1 file..."))
-  createLevelQ1File(database_path = database_path,
-                    gtf_path = gtf_path,
-                    gtf_version = gtf_version)
+  CreateLevelQ1File(database.path = database.path,
+                    blacklist.path,
+                    gtf.path = gtf.path,
+                    gtf.version = gtf.version)
   gc()
   
   
   logger::log_info(paste0(Sys.time(), "\t\t starting the creation of the base data per RPB..."))
-  createBaseDataPerRBP(metadata = metadata,
-                       results_path = results_path,
-                       gtf_version = gtf_version,
-                       database_path = database_path)
+  CreateBaseDataPerRBP(metadata = metadata,
+                       results.path = results.path,
+                       gtf.version = gtf.version,
+                       database.path = database.path)
   gc()
   
 }
@@ -54,7 +52,7 @@ prepare_encode_data <- function(metadata,
 #'
 #' @param metadata Dataframe containing all the metadata.
 #' @param main_samples_path Path to where the JUNC files are stored.
-#' @param num_cores Number of multiprocessing cores to use. Memory requirements
+#' @param num.cores Number of multiprocessing cores to use. Memory requirements
 #'   significantly increase with the number of cores.
 #' @param rw_disk Whether to store the results in disk. By default, TRUE.
 #' @param overwrite Whether to overwrite previously generated results from the
@@ -65,12 +63,12 @@ prepare_encode_data <- function(metadata,
 #'   dataframe will contain information about the junction and the reads of that
 #'   junction in each sample.
 #' @export
-junctionReading <- function(metadata,
-                            RBP_source_path,
-                            results_path,
-                            database_path,
-                            ENCODE_silencing_series,
-                            num_cores = 4){
+JunctionReading <- function(metadata,
+                            RBP.source.path,
+                            results.path,
+                            database.path,
+                            ENCODE.silencing.series,
+                            num.cores = 4){
   
   logger::log_info("\t Starting the junction reading process.")
   
@@ -86,7 +84,7 @@ junctionReading <- function(metadata,
     message(RBP)
     
     ## Save GLOBAL BASE DATA for the current RBP
-    local_results_path <- file.path(results_path, RBP, "/base_data")
+    local_results_path <- file.path(results.path, RBP, "/base_data")
     dir.create(path = local_results_path, recursive = T)
     
     c("case", "control") %>% 
@@ -95,7 +93,7 @@ junctionReading <- function(metadata,
     metadata %>% 
       filter(target_gene == RBP) %>%
       mutate(cluster = experiment_type,
-             SRA_project = paste0(ENCODE_silencing_series, " ENCODE")) %>%
+             SRA_project = paste0(ENCODE.silencing.series, " ENCODE")) %>%
       distinct(target_gene, SRA_project, cluster, sample_id, .keep_all = T) %>%
       saveRDS(file = file.path(local_results_path, paste0(RBP, "_samples_metadata.rds")))
     
@@ -113,18 +111,18 @@ junctionReading <- function(metadata,
                experiment_type == cluster)
       
       ## Multiprocessing loop
-      cl <- parallel::makeCluster(num_cores)
+      cl <- parallel::makeCluster(num.cores)
       doParallel::registerDoParallel(cl)
-      logger::log_info("\t\t Reading all extracted BAM files (num_cores = ", num_cores, ").")
+      logger::log_info("\t\t Reading all extracted BAM files (num.cores = ", num.cores, ").")
       
       all_junc <- foreach(i = 1:nrow(cluster_metadata %>% distinct(sample_id)), 
-                          .export=c("RBP","RBP_source_path"),
+                          .export=c("RBP","RBP.source.path"),
                           .combine = 'rbind', .packages = c("tidyverse")) %dopar% {
         
         ## i = 1
         ## Definition of the variables
         sample_id <- cluster_metadata[i, ] %>% pull(sample_id)
-        junc_path <- file.path(RBP_source_path, RBP, cluster, paste0(sample_id, ".bam.sort.s0.junc"))
+        junc_path <- file.path(RBP.source.path, RBP, cluster, paste0(sample_id, ".bam.sort.s0.junc"))
         
         logger::log_info("\t Reading junctions from ", RBP)
         
@@ -213,106 +211,106 @@ junctionReading <- function(metadata,
     dplyr::mutate(junID = dplyr::cur_group_id(), .before = seqnames) %>%
     dplyr::ungroup() %>%
     dplyr::select(-sampleID) %>%
-    saveRDS(paste0(database_path, "/all_split_reads_raw.rds"))
+    saveRDS(paste0(database.path, "/all_split_reads_raw.rds"))
   
 }
 
 
 
-createLevelQ1File <- function(database_path,
-                              gtf_path,
-                              gtf_version){
+CreateLevelQ1File <- function(database.path,
+                              blacklist.path,
+                              gtf.path,
+                              gtf.version){
   
   logger::log_info("\t Creating the 'all_split_reads_qc_level1.rds' file...")
   
 
-  all_junc_combined <- readRDS(paste0(database_path, "all_split_reads_raw.rds")) %>% as_tibble()
+  all_junc_combined <- readRDS(paste0(database.path, "all_split_reads_raw.rds")) %>% as_tibble()
   all_junc_combined %>% head()
   
   
-  ## Remove junctions shorter than 25bp
-  all_junc_combined <- removeShortJunctions(all_junc_combined)
+  ## 1. Remove junctions shorter than 25bp
+  all_junc_combined <- RemoveShortJunctions(all_junc_combined)
   logger::log_info("\t Split reads shorter than 25bp removed!")
   gc()
   
   
-  ## Convert to a GRanges before blacklist and annotating
-  all_junc_combined <- all_junc_combined %>%
-    GenomicRanges::GRanges()
   
+  ## 2. Convert to a GRanges before blacklist and annotating
+  all_junc_combined <- all_junc_combined %>% GenomicRanges::GRanges()
   
-  blacklist_path <- "/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed"
-  encode_blacklist_hg38 <- loadEncodeBlacklist(blacklist_path)
-  all_junc_combined <- removeEncodeBlacklistRegions(all_junc_combined, encode_blacklist_hg38)
+  all_junc_combined <- RemoveEncodeBlacklistRegions(GRdata = all_junc_combined, blacklist.path = blacklist.path)
   logger::log_info("\t Split reads overlapping blacklist regions removed!")
   
-  ## Annotate Dasper
   
-  edb <- loadEdb(gtf_path)
-  all_junc_combined_annotated <- annotateDasper(GRdata = all_junc_combined, edb) %>% 
-    tibble::as_tibble()
+  
+  ## 3. Annotate Dasper
+  edb <- LoadEdb(gtf.path)
+  all_junc_combined_annotated <- AnnotateDasper(GRdata = all_junc_combined, edb) %>% tibble::as_tibble()
   logger::log_info("\t Split reads annotation finished!")
   
-  ## Remove junctions with ambiguous genes
-  all_junc_combined_annotated <- removeAmbiguousGenes(all_junc_combined_annotated)
-  logger::log_info("\t Ambiguous split reads removed!")
   
-  ## Remove uncategorized junctions
-  all_junc_combined_annotated <- removeUncategorizedJunctions(input_SR_details = all_junc_combined_annotated)
+  
+  
+  ## 4. Remove uncategorized junctions
+  all_junc_combined_annotated_tidy <- RemoveUncategorizedJunctions(input.SR.details = all_junc_combined_annotated)
   logger::log_info("\t Uncategorised split reads removed!")
   
-  ## Save the junctions
   
-  dir.create(path = file.path(database_path, gtf_version), recursive = T)
-  all_junc_combined_annotated %>% 
+  
+  
+  ## 5. Remove junctions with ambiguous genes
+  dir.create(path = file.path(database.path, gtf.version), recursive = T)
+  all_junc_combined_annotated_tidy <- RemoveAmbiguousJunctions(all_junc_combined_annotated_tidy, 
+                                                               database.folder = file.path(database.path, gtf.version))
+  logger::log_info("\t Ambiguous split reads removed!")
+  
+  
+  
+  
+  ## 6. Save the junctions
+  all_junc_combined_annotated_tidy %>% 
     dplyr::select("junID", "seqnames", "start", "end", "width", "strand",
                   gene_id = "gene_id_junction", "in_ref", "type", "tx_id_junction") %>%
     dplyr::bind_rows() %>% 
     dplyr::distinct() %>% 
     mutate(junID = paste0("chr", seqnames,":", start, "-", end, ":", strand)) %>%
-    saveRDS(file = file.path(database_path, gtf_version, "all_split_reads_qc_level1.rds"))
+    saveRDS(file = file.path(database.path, gtf.version, "all_split_reads_qc_level1.rds"))
   
   logger::log_info("\t 'all_split_reads_qc_level1.rds' file saved!")
+  
 }
 
 
 
-createBaseDataPerRBP <- function(metadata,
-                                 results_path,
-                                 gtf_version,
-                                 database_path) {
+CreateBaseDataPerRBP <- function(metadata,
+                                 results.path,
+                                 gtf.version,
+                                 database.path) {
   
  
-  all_split_reads_qc_level1 <- readRDS(file = file.path(database_path, gtf_version, "all_split_reads_qc_level1.rds")) 
-  
+  all_split_reads_qc_level1 <- readRDS(file = file.path(database.path, gtf.version, "all_split_reads_qc_level1.rds")) 
   target_genes <- metadata %>% pull(target_gene) %>% unique()
   
-  for(RBP in target_genes) {
+  for (RBP in target_genes) {
     
-    # RBP <- target_genes[3]
+    # RBP <- target_genes[1]
     logger::log_info(paste0("\t\t Working with '", RBP, "' gene..."))
     
-    
-    local_results_path <- file.path(results_path, RBP,  "/base_data")
+    local_results_path <- file.path(results.path, RBP,  "base_data")
     dir.create(path = local_results_path, recursive = T)
     
-    
-    for(cluster in c("case", "control")) {
+    for (cluster in c("case", "control")) {
       
       # cluster <- c("case", "control")[1]
       
-      
-      
-      if ( file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_raw.rds"))) ) {
+      if (file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_raw.rds")))) {
         
         logger::log_info("\t Working with ", RBP, " junctions....")
-        
         
         cluster_metadata <- metadata %>% 
           filter(target_gene == RBP,
                  experiment_type == cluster)
-        
-        
         
         ## Read the samples used
         samples_used <- readRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_samples_used.rds")))
@@ -326,14 +324,12 @@ createBaseDataPerRBP <- function(metadata,
           dplyr::select(-strand, -junID) %>%
           inner_join(y = all_split_reads_qc_level1 %>% 
                        dplyr::select("junID", "seqnames", "start", "end", "strand", "gene_id", "in_ref", "type", "tx_id_junction"),
-                     by = c("seqnames",
-                            "start",
-                            "end")) %>%
+                     by = c("seqnames", "start", "end")) %>%
           dplyr::relocate(strand, .after="end") %>%
           dplyr::relocate(junID)
         
         
-        ## Save the split read counts
+        ## Save the split read counts for the current sample cluster
         split_read_counts <- all_junc_tidy  %>% 
           filter(sampleID %in% samples_used) %>%
           dplyr::select(junID, reads, sampleID) %>%
@@ -342,6 +338,7 @@ createBaseDataPerRBP <- function(metadata,
           saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts.rds")))
         
         
+        ## Save the details about the split reads for the current sample cluster
         all_junc_tidy %>%
           dplyr::bind_rows() %>% 
           dplyr::distinct() %>%
@@ -352,150 +349,6 @@ createBaseDataPerRBP <- function(metadata,
       } else {
         logger::log_info("\t ", RBP, " does not have junctions.")
       }
-      
-      
     }
   }
-  
 }
-
-
-
-#' Loads the reference genome into memory
-#'
-#' The different versions can be downloaded
-#' \href{http://ftp.ensembl.org/pub/release-105/gtf/homo_sapiens/}{here}.
-#'
-#' @param gtf_path Path to the reference genome GTF file.
-#'
-#' @return Connection to the reference genome DB.
-#' @export
-loadEdb <- function(gtf_path) {
-  if (!exists("edb")) {
-    logger::log_info("\t\t Loading the reference genome.")
-    edb <<- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-    edb <<- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  } else {
-    logger::log_info("\t\t Variable 'edb' already loaded!")
-  }
-  
-  return(edb)
-}
-
-#' Loads the ENCODE blacklisted regions into memory
-#'
-#' The different versions can be downloaded
-#' \href{https://github.com/Boyle-Lab/Blacklist/tree/master/lists}{here}.
-#'
-#' @param blacklist_path Path to the ENCODE blacklisted regions BED file.
-#'
-#' @return The ENCODE blacklisted region in GRanges object.
-#' @export
-loadEncodeBlacklist <- function(blacklist_path) {
-  if (!exists("encode_blacklist_hg38")) {
-    logger::log_info("\t\t Loading the v2 ENCODE blacklisted regions.")
-    encode_blacklist_hg38 <<- rtracklayer::import(blacklist_path) %>% diffloop::rmchr()
-  } else {
-    logger::log_info("\t\t Variable 'encode_blacklist_hg38' is already loaded!")
-  }
-  
-  return(encode_blacklist_hg38)
-}
-
-
-
-#' Remove the junctions from the ENCODE blacklisted regions
-#'
-#' @param GRdata GRanges class object with the relevant junctions.
-#' @param encode_blacklist_hg38 GRanges class object with the blacklisted regions.
-#'
-#' @return Junctions that do not overlap with the blacklisted regions.
-#' @export
-removeEncodeBlacklistRegions <- function(GRdata,
-                                         encode_blacklist_hg38) {
-  logger::log_info("\t\t Removing junctions from ENCODE blacklisted regions.")
-  ## Look fot the overlaps between GRdata and the ENCODE blacklisted region
-  overlaps <- GenomicRanges::findOverlaps(
-    query = encode_blacklist_hg38,
-    subject = GRdata,
-    ignore.strand = F,
-    type = "any"
-  )
-  
-  idxs <- S4Vectors::subjectHits(overlaps)
-  
-  ## If an overlap is found, remove the junctions
-  if (length(idxs) > 0) {
-    #logger::log_info(paste0("A total of ", length(unique(idxs)), " junctions overlap with an ENCODE blacklisted region."))
-    GRdata <- GRdata[-idxs, ]
-    #logger::log_info(paste0("A total of ", length(GRdata), " are left after the removal."))
-  } else {
-    logger::log_info("No junctions overlapping with an ENCODE blacklist region.")
-  }
-  
-  return(GRdata)
-}
-
-#' Annotate and categorize every junction
-#'
-#' @param GRdata GRanges class object with the relevant junctions.
-#' @param edb The connection to the reference genome DB.
-#'
-#' @return Annotated input by dasper.
-#' @export 
-annotateDasper <- function(GRdata, edb) {
-  logger::log_info("\t\t Annotating using dasper::junction_annot().")
-  GRdata <- dasper::junction_annot(GRdata,
-                                   ref = edb,
-                                   ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"),
-                                   ref_cols_to_merge = c("gene_id", "gene_name", "tx_id")
-  )
-  
-  return(GRdata)
-}
-
-#' Remove the junctions shorter than 25bp.
-#'
-#' @param input_SR_details Dataframe object with the relevant junctions.
-#'
-#' @return Junctions bigger than 25bp.
-#' @export
-removeShortJunctions <- function(input_SR_details) {
-  logger::log_info("\t\t Removing junctions shorter than 25bp.")
-  output_SR_details <- input_SR_details %>%
-    dplyr::filter(width >= 25)
-  
-  return(output_SR_details)
-}
-
-#' Remove the junctions with uncategorized classification.
-#'
-#' @param input_SR_details Dataframe object with the relevant junctions.
-#'
-#' @return Junctions categorized as "annotated", "novel_donor" or
-#'   "novel_acceptor".
-#' @export
-removeUncategorizedJunctions <- function(input_SR_details) {
-  logger::log_info("\t\t Removing junctions not classified as novel_acceptor, novel_donor or annotated.")
-  output_SR_details <- input_SR_details %>%
-    dplyr::filter(type %in% c("novel_acceptor", "novel_donor", "annotated"))
-  
-  return(output_SR_details)
-}
-
-#' Remove the junctions from ambiguous genes.
-#'
-#' @param input_SR_details Dataframe object with the relevant junctions.
-#'
-#' @return Junctions assigned to only one gene.
-#' @export
-removeAmbiguousGenes <- function(input_SR_details) {
-  logger::log_info("\t\t Removing junctions associated to more than one gene.")
-  
-  
-  output_SR_details <- input_SR_details[which(sapply(input_SR_details$gene_id_junction, length) == 1), ]
-  
-  return(output_SR_details)
-}
-
-

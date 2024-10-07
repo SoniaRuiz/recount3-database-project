@@ -3,19 +3,19 @@
 #'
 #' @param cluster 
 #' @param samples 
-#' @param folder_name 
+#' @param folder.name 
 #'
 #' @return
 #' @export
 #'
 #' @examples
-extract_distances <- function(cluster,
-                              samples,
-                              folder_name,
-                              replace) {
+ExtractDistances <- function(cluster,
+                             samples,
+                             folder.name,
+                             replace) {
   
   
-  if ( replace ) {
+  if (replace) {
     
     ## Obtain the distances across all samples
     df_all <- map_df(samples, function(sample) { 
@@ -23,7 +23,7 @@ extract_distances <- function(cluster,
       # sample <- samples[1]
       # sample <- "GTEX-ZVT2-0426-SM-5E44S.1"
       
-      file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
+      file_name <- paste0(folder.name, "/", cluster, "_", sample, "_distances.rds")
       
       if (file.exists(file_name)) {
         
@@ -43,10 +43,8 @@ extract_distances <- function(cluster,
       
     })
     
-    saveRDS(object = df_all %>%
-              distinct(novel_junID, ref_junID, .keep_all = T) %>%
-              mutate(tissue = cluster),
-            file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds") )
+    saveRDS(object = df_all %>% distinct(novel_junID, ref_junID, .keep_all = T) %>% mutate(tissue = cluster),
+            file = paste0(folder.name, "/", cluster, "_raw_distances_tidy.rds") )
     
    } else {
      logger::log_info(paste0("Sample '", cluster, "_raw_distances_tidy.rds' exists!"))

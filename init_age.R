@@ -100,7 +100,7 @@ for (project_id in age_projects) {
 }
 
 
-get_all_annotated_split_reads(recount3.project.IDs = age_projects,
+GetAllAnnotatedSplitReads(recount3.project.IDs = age_projects,
                               all.clusters = project_init$age_group %>% unique(),
                               database.folder = database_folder,
                               results.folder = results_folder,
@@ -108,40 +108,37 @@ get_all_annotated_split_reads(recount3.project.IDs = age_projects,
 
 
 
-get_all_raw_jxn_pairings(recount3.project.IDs = age_projects,
-                         all.clusters = project_init$age_group %>% unique(),
-                         database.folder = database_folder,
-                         results.folder = results_folder,
-                         num.cores = 8)
+GetAllRawJxnPairings(recount3.project.IDs = age_projects,
+                     all.clusters = project_init$age_group %>% unique(),
+                     database.folder = database_folder,
+                     results.folder = results_folder,
+                     num.cores = 8)
 
 
 age_projects <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
 
 
-
-
-generate_recount3_tpm(recount3.project.IDs = age_projects,
+GenerateRecount3TPM(recount3.project.IDs = age_projects,
                       data.source = data_source,
                       tpm.folder = tpm_folder,
                       results.folder = results_folder)
 
 
-tidy_data_pior_sql(recount3.project.IDs = age_projects,
+TidyDataPiorSQL(recount3.project.IDs = age_projects,
                    levelqc1.folder = levelqc1_folder,
                    all.clusters = project_init$age_group %>% unique(),
                    database.folder = database_folder,
                    results.folder = results_folder)
 
-if ( !file.exists(paste0(database_folder, "/all_split_reads_qc_level2_PC_biotype.rds")) ) {
-  generate_transcript_biotype_percentage(gtf.version = gtf_version,
-                                         database.folder = paste0(base_folder, "/database/",
-                                                                  project_name, "/", gtf_version, "/"),
-                                         results.folder = database_folder)
-}
+
+GenerateTranscriptBiotypePercentage(gtf.version = gtf_version,
+                                    database.folder = file.path(base_folder, "database", project_name, gtf_version),
+                                    results.folder = database_folder)
+
 
 database_path <- paste0(database_folder,  "/", database_name, ".sqlite")
 
-sql_database_generation(database.path = database_path,
+SqlDatabaseGeneration(database.path = database_path,
                         recount3.project.IDs = age_projects,
                         remove.all = T,
                         database.folder = database_folder,

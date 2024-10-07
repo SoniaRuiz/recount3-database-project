@@ -20,6 +20,8 @@
 download_recount3_data <- function (recount3.project.IDs,
                                     project.name,
                                     gtf.version,
+                                    blacklist_path,
+                                    gtf_path,
                                     data.source,
                                     database.folder,
                                     results.folder) {
@@ -123,10 +125,9 @@ download_recount3_data <- function (recount3.project.IDs,
   ## 1. Discard all split reads shorter than 25 bp
   #######################################################################
   
-  all_split_reads_raw_tidy <- all_split_reads_raw %>%
-    filter(width >= 25)
-  
-  logger::log_info(all_split_reads_raw_tidy %>% nrow(), " split reads after removing those shorter than 25 bp")
+  ## Remove junctions shorter than 25bp
+  all_split_reads_raw_tidy <- RemoveShortJunctions(all_split_reads_raw)
+  logger::log_info("\t Split reads shorter than 25bp removed!")
   
   rm(all_split_reads_raw)
   gc()
@@ -137,10 +138,7 @@ download_recount3_data <- function (recount3.project.IDs,
   
   logger::log_info("removing unplaced sequences genome...")
   
-  all_split_reads_raw_tidy_gr <- all_split_reads_raw_tidy %>%
-    filter(!(strand=="?")) %>%
-    GenomicRanges::GRanges() %>%
-    diffloop::rmchr()
+  all_split_reads_raw_tidy_gr <- all_split_reads_raw_tidy %>% filter(!(strand=="?")) %>% GenomicRanges::GRanges() %>% diffloop::rmchr()
   
   rm(all_split_reads_raw_tidy)
   gc()
@@ -163,42 +161,33 @@ download_recount3_data <- function (recount3.project.IDs,
   
   logger::log_info( all_split_reads_raw_tidy_gr %>% length(), " split reads after removing those not aligning the hg38" )
   
+  
   ##########################################################
   ## 3. Remove split reads overlapping the ENCODE backlist
   ##########################################################
   
-  logger::log_info("removing blacklist sequences...")
+  logger::log_info("\t\t Removing blacklist sequences...")
+  all_split_reads_raw_tidy_gr <- RemoveEncodeBlacklistRegions(GRdata = all_split_reads_raw_tidy_gr, blacklist.path = blacklist_path)
   
-  blacklist_path <- file.path(dependencies_folder, "hg38-blacklist.v2.bed")
-  all_split_reads_raw_tidy_gr <- remove_encode_blacklist_regions(GRdata = all_split_reads_raw_tidy_gr,
-                                                                 blacklist_path = blacklist_path)
   
-  ## Data check
-  all_split_reads_raw_tidy_gr %>%
-    as_tibble() %>%
-    distinct(junID, .keep_all = T) %>%
-    nrow() %>%
-    logger::log_info()
+  ## Log number of split reads
+  all_split_reads_raw_tidy_gr %>% as_tibble() %>% distinct(junID, .keep_all = T) %>% nrow() %>% logger::log_info()
+  logger::log_info("\t Split reads overlapping blacklist regions removed!")
+  
+  
   
   #######################################################
   ## 4. Anotate using 'dasper'
   #######################################################
   
-  logger::log_info("Annotating dasper...")
+  logger::log_info("\t\t Annotating dasper...")
   
-  if ( file.exists(paste0(dependencies_folder, "/Homo_sapiens.GRCh38.", gtf.version, ".chr.gtf")) ) {
-    gtf_path <- paste0(dependencies_folder, "/Homo_sapiens.GRCh38.", gtf.version, ".chr.gtf")
-  } else {
-    gtf_path <- paste0(dependencies_folder, "/Homo_sapiens.GRCh38.", gtf.version, ".gtf")
-  }
-  edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+  ## Annotate Dasper
+  edb <- loadEdb(gtf_path)
+  all_split_reads_details_w_symbol <- AnnotateDasper(GRdata = all_split_reads_raw_tidy_gr %>% GRanges(), edb) %>% tibble::as_tibble()
+  logger::log_info("\t Split reads annotation finished!")
   
-  all_split_reads_details_w_symbol <- dasper::junction_annot(junctions = all_split_reads_raw_tidy_gr %>% GRanges(), 
-                                                             ref = edb,
-                                                             ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"), 
-                                                             ref_cols_to_merge = c("gene_id", "gene_name", "tx_id"))
-  all_split_reads_details_w_symbol %>% head
+  
   rm(all_split_reads_raw_tidy_gr)
   rm(edb)
   gc()
@@ -208,22 +197,14 @@ download_recount3_data <- function (recount3.project.IDs,
   ## 5. Discard all junctions that are not annotated, novel donor or novel acceptor
   ################################################################################
   
-  
-  
-  ## Subset columns
-  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol[,c("junID", "gene_id_junction", 
-                                                                          "in_ref", "type", "tx_id_junction",
-                                                                          "annotated", "left_motif", "right_motif", "n_projects")]
-  
-  
-  logger::log_info("removing split reads not classified as 'annotated', 'novel_donor', 'novel_acceptor', 'novel combo' or 'novel exon skip' ...")
-  
-  ## Only use annotated introns, novel donor and novel acceptor junctions
-  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol[(elementMetadata(all_split_reads_details_w_symbol)[,"type"] %in% 
-                                                                          c("annotated", "novel_donor", "novel_acceptor", "novel_combo", "novel_exon_skip"))]
+  ## Remove uncategorized junctions
+  all_split_reads_details_w_symbol <- RemoveUncategorizedJunctions(input.SR.details = all_split_reads_details_w_symbol)
+  logger::log_info("\t Uncategorised split reads removed!")
   
   
   logger::log_info( all_split_reads_details_w_symbol %>% length(), " annotated, novel donor and novel acceptor junctions.")
+  
+  
   
   ############################################################################
   ## 6. Discard all ambiguous split reads (i.e. assigned to multiple genes)
@@ -231,30 +212,21 @@ download_recount3_data <- function (recount3.project.IDs,
   
   logger::log_info("discarding ambiguous split reads ...")
   
-  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>%
-    as_tibble() %>%
-    distinct(junID, .keep_all = T) %>% 
-    rowwise() %>%
-    mutate(ambiguous = ifelse(gene_id_junction %>% unlist() %>% length() > 1, T, F))
   
-  ambiguous_introns <- all_split_reads_details_w_symbol %>%
-    dplyr::filter(ambiguous == T)
-  
-  saveRDS(object = ambiguous_introns,
-          file = paste0(database.folder, "/all_ambiguous_jxn.rds"))
+  ## Remove junctions with ambiguous genes
+  all_split_reads_details_w_symbol <- RemoveAmbiguousGenes(input.SR.details = all_split_reads_details_w_symbol, database.folder)
+  logger::log_info("\t Ambiguous split reads removed!")
   
   
   #####################
   ## 7. SAVE RESULTS
   #####################
   
-  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>%
-    dplyr::filter(ambiguous == F) %>%
-    dplyr::select(-ambiguous)
+  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>% dplyr::filter(ambiguous == F) %>% dplyr::select(-ambiguous)
   
   logger::log_info(ambiguous_introns %>% nrow(), " ambiguous split reads discarded.")
   saveRDS(object = all_split_reads_details_w_symbol %>% dplyr::rename(gene_id = gene_id_junction),
-          file = paste0(database.folder, "/all_split_reads_qc_level1.rds"))
+          file = file.path(database.folder, "all_split_reads_qc_level1.rds"))
   
   
   ## FREE UP SOME MEMORY

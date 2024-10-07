@@ -7,8 +7,7 @@
 #' @export
 #'
 #' @examples
-sql_remove_tables <- function(database.path,
-                              all) {
+SqlRemoveTables <- function(database.path, all) {
   
   con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database.path)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=0")

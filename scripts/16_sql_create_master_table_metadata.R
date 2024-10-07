@@ -8,7 +8,7 @@
 #' @export
 #'
 #' @examples
-sql_create_master_table_metadata <- function(database.path,
+SqlCreateMasterTableMetadata <- function(database.path,
                                              recount3.project.IDs,
                                              results.folder)  {
   

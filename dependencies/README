@@ -54,9 +54,9 @@ gtf file downloaded from: https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/cu
 "ENSG00000210195" "ENSG00000210196"
 
 
-6. 'clinvar_intronic_tidy.rda'
+6. 'clinvar.vcf'
 ==============================
-.tsv data downloaded from https://www.ncbi.nlm.nih.gov/variation/view
+data downloaded from https://www.ncbi.nlm.nih.gov/variation/view
 
 
 7. 'Homo_sapiens.GRCh38.105.chr.gtf'

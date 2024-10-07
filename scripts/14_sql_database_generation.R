@@ -13,13 +13,14 @@
 #' @export
 #'
 #' @examples
-sql_database_generation <- function(database.path,
-                                    recount3.project.IDs, 
-                                    remove.all = NULL,
-                                    database.folder,
-                                    results.folder,
-                                    gtf.version,
-                                    discard.minor.introns = F) {
+SqlDatabaseGeneration <- function(database.path,
+                                  recount3.project.IDs,
+                                  database.folder,
+                                  results.folder,
+                                  dependencies.folder,
+                                  gtf.version,
+                                  discard.minor.introns = F, 
+                                  remove.all = NULL) {
   
   
   print(paste0(Sys.time(), " --> ", database.path, "..."))
@@ -30,17 +31,17 @@ sql_database_generation <- function(database.path,
   #logger::log_info("Database tables:",paste0(tables %>% print()))
 
   
-  if ( !is.null(remove.all) ) {
-    sql_remove_tables(database.path, 
-                      all = remove.all)
+  if (!is.null(remove.all)) {
+    SqlRemoveTables(database.path, all = remove.all)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   }
   
-  if ( !any(tables == 'metadata') ) {
-    sql_create_master_table_metadata(database.path = database.path,
-                                     recount3.project.IDs = recount3.project.IDs,
-                                     results.folder = results.folder)
+  if (!any(tables == 'metadata')) {
+    logger::log_info("\t Creating metadata table ...")
+    SqlCreateMasterTableMetadata(database.path = database.path,
+                                 recount3.project.IDs = recount3.project.IDs,
+                                 results.folder = results.folder)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   } else {
@@ -48,28 +49,30 @@ sql_database_generation <- function(database.path,
   }
   
   if ( !any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
-    logger::log_info("creating master tables ...")
-    sql_create_master_tables(database.path = database.path,
-                             gtf.version = gtf.version,
-                             database.folder = database.folder,
-                             results.folder = results.folder,
-                             discard.minor.introns = discard.minor.introns)
+    logger::log_info("\t Creating master tables ...")
+    SqlCreateMasterTables(database.path = database.path,
+                          gtf.version = gtf.version,
+                          database.folder = database.folder,
+                          results.folder = results.folder,
+                          dependencies.folder = dependencies.folder,
+                          discard.minor.introns = discard.minor.introns)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   } else {
     logger::log_info("master tables exist!")
   }
   
-  logger::log_info("creating child tables ...")
-  sql_create_child_tables(database.path,
+  logger::log_info("\t Creating child tables ...")
+  SqlCreateChildTables(database.path,
                           recount3.project.IDs,
                           database.folder,
                           results.folder)
   
   
-  logger::log_info("creating combo tables ...")
-  # sql_create_combo_tables(database.path,
-  #                         recount3.project.IDs,
-  #                         database.folder,
-  #                         results.folder)
+  logger::log_info("\t Creating combo tables ...")
+  SqlCreateComboTables(database.path = database.path,
+                       dependencies.folder = dependencies.folder,
+                       recount3.project.IDs = recount3.project.IDs,
+                       database.folder = database.folder,
+                       results.folder = results.folder)
 }

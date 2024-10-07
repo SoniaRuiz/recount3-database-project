@@ -1,21 +1,181 @@
+#' #' Get Never Mis-spliced Junctions
+#' #'
+#' #' This function filters junctions to keep those that are never mis-spliced,
+#' #' discarding any junctions that overlap with mis-spliced junctions.
+#' #'
+#' #' @param cluster A character string indicating the cluster name.
+#' #' @param samples A character vector of sample identifiers.
+#' #' @param split.read.counts A data frame containing split read counts.
+#' #' @param all.split.reads.details A data frame with details of all split reads.
+#' #' @param folder.name A character string indicating the folder to save results.
+#' #' @param replace A logical indicating whether to replace existing results.
+#' #'
+#' #' @return A list containing the never mis-spliced and mis-spliced junctions.
+#' #' @export
+#' #'
+#' #' @examples
+#' #' GetNeverMisspliced(cluster = "cluster1", samples = c("sample1", "sample2"),
+#' #'                    split.read.counts = split_counts_df,
+#' #'                    all.split.reads.details = all_details_df,
+#' #'                    folder.name = "results", replace = TRUE)
+#' GetNeverMisspliced <- function(cluster, 
+#'                                samples,
+#'                                split.read.counts,
+#'                                all.split.reads.details,
+#'                                folder.name,
+#'                                replace) {
+#'   
+#'   logger::log_info(paste0(Sys.time(), " - Filtering junctions that are potentially not mis-spliced..."))
+#'   
+#'   # Check if required file exists
+#'   distances_file <- file.path(folder.name, paste0(cluster, "_raw_distances_tidy.rds"))
+#'   if (!file.exists(distances_file)) {
+#'     stop(paste0("File: '", distances_file, "' doesn't exist."))
+#'   }
+#'   
+#'   # Check for missing junction IDs
+#'   if (any(!all.split.reads.details$junID %in% split.read.counts$junID)) {
+#'     stop("ERROR: Some junctions in all.split.reads.details are missing in split.read.counts.")
+#'   }
+#'   
+#'   # Load mis-spliced junctions
+#'   df_all_misspliced <- readRDS(distances_file) %>%
+#'     dplyr::distinct(ref_junID, .keep_all = TRUE)
+#'   
+#'   # Get all junctions not paired on the first round - these have the potential of being non-mispliced
+#'   all_not_misspliced <- all.split.reads.details %>%
+#'     dplyr::filter(!(junID %in% df_all_misspliced$ref_junID))
+#'   
+#'   # Check for duplicates
+#'   if (any(duplicated(df_all_misspliced$ref_junID)) || 
+#'       any(duplicated(all_not_misspliced$junID))) {
+#'     stop("ERROR: Duplicates found in junctions.")
+#'   }
+#'   
+#'   # Main processing loop for samples
+#'   
+#'   introns_not_misspliced <- character()
+#'   
+#'   if (replace || 
+#'       (!file.exists(file.path(folder.name, paste0(cluster, "_all_notmisspliced.rds"))) && 
+#'        !file.exists(file.path(folder.name, paste0(cluster, "_all_misspliced_not_paired.rds"))))) {
+#'     
+#'     for (sample in samples) {
+#'       
+#'       introns_misspliced <- character()
+#'       
+#'       # sample <- samples[3]
+#'       if (!sample %in% colnames(split.read.counts)) {
+#'         next
+#'       }
+#'       
+#'       # Process sample
+#'       split_read_counts_sample <- split.read.counts %>%
+#'         dplyr::select(junID, all_of(sample))
+#'       
+#'       # Merge details with counts
+#'       all_not_misspliced_details_sample <- all_not_misspliced %>%
+#'         dplyr::inner_join(split_read_counts_sample, by = "junID") %>%
+#'         dplyr::rename(counts = !!sym(sample))
+#'       
+#'       
+#'       # Quality control check
+#'       sample_check <- all_not_misspliced_details_sample[sample(1:nrow(all_not_misspliced_details_sample), 1), ]
+#'       if (!identical(sample_check$counts, split_read_counts_sample[split_read_counts_sample$junID == sample_check$junID,2][[1]])) {
+#'         stop("ERROR: QC failed!")
+#'       }
+#'       
+#'       logger::log_info(paste0(cluster, " - processing sample '", sample, "'..."))
+#'       
+#'       # Filtering annotated, donor, and acceptor junctions
+#'       all_annotated <- all_not_misspliced_details_sample %>%
+#'         dplyr::filter(type == "annotated") %>%
+#'         GenomicRanges::GRanges()
+#'       
+#'       all_donor <- all_not_misspliced_details_sample %>%
+#'         dplyr::filter(type == "novel_donor") %>%
+#'         GenomicRanges::GRanges()
+#'       
+#'       all_acceptor <- all_not_misspliced_details_sample %>%
+#'         dplyr::filter(type == "novel_acceptor") %>%
+#'         GenomicRanges::GRanges()
+#'       
+#'       
+#'       PairNovelJunctionsIntrons <- function(novel, annotated, pair_type) {
+#'         overlaps <- GenomicRanges::findOverlaps(query = novel, subject = annotated, ignore.strand = FALSE, type = pair_type)
+#'         introns_misspliced <- annotated[subjectHits(overlaps),]$junID
+#'         return(introns_misspliced)
+#'       }
+#'       
+#'       # Pairing logic for donors
+#'       if (length(all_donor) > 0) {
+#'         introns_misspliced <- c(PairNovelJunctionsIntrons(novel = all_donor[all_donor@strand == "+"], 
+#'                                                           annotated = all_annotated[all_annotated@strand == "+"], pair_type = "end"),
+#'                                 
+#'                                 PairNovelJunctionsIntrons(novel = all_donor[all_donor@strand == "-"], 
+#'                                                           annotated = all_annotated[all_annotated@strand == "-"], pair_type = "start"))
+#'       }
+#'       logger::log_info(paste0("Processed sample '", sample, "': ", length(introns_misspliced), " mis-spliced introns at the donor splice site..."))
+#'       
+#'       # Pairing logic for acceptors
+#'       if (length(all_acceptor) > 0) {
+#'         introns_misspliced <- c(introns_misspliced, 
+#'                                 PairNovelJunctionsIntrons(all_acceptor[all_acceptor@strand == "+"], all_annotated[all_annotated@strand == "+"], pair_type = "start" ),
+#'                                 PairNovelJunctionsIntrons(all_acceptor[all_acceptor@strand == "-"], all_annotated[all_annotated@strand == "-"], pair_type = "end"))
+#'       }
+#'       logger::log_info(paste0("Processed sample '", sample, "': ", length(introns_misspliced), " mis-spliced introns at the donor & acceptor splice sites..."))
+#'       
+#'       # Collect non-mis-spliced junctions
+#'       introns_not_misspliced <- unique(c(introns_not_misspliced, 
+#'                                          all_annotated$junID[!all_annotated$junID %in% introns_misspliced]))
+#'       logger::log_info(paste0("Processed sample '", sample, "': ", length(introns_not_misspliced), " not mis-spliced introns..."))
+#'       
+#'       
+#'     }
+#'     
+#'     # Final checks and save results
+#'     introns_not_misspliced <- setdiff(introns_not_misspliced, introns_misspliced)
+#'     logger::log_info(paste0("Processed sample '", sample, "': ", length(introns_not_misspliced), " not mis-spliced introns..."))
+#'     
+#'     if (length(intersect(introns_not_misspliced, introns_misspliced)) > 0) {
+#'       stop("ERROR: Overlapping not-mispliced and mis-spliced junctions found!")
+#'     }
+#'     
+#'     logger::log_info(paste0(Sys.time(), " - ", length(introns_not_misspliced), " not mis-spliced junctions!"))
+#'     folder_path <- file.path(folder.name, "not-misspliced")
+#'     dir.create(folder_path, showWarnings = FALSE)
+#'     
+#'     saveRDS(introns_not_misspliced, file.path(folder_path, paste0(cluster, "_all_notmisspliced.rds")))
+#'     saveRDS(junc_ignore, file.path(folder_path, paste0(cluster, "_all_misspliced_not_paired.rds")))
+#'     
+#'     logger::log_info(paste0(Sys.time(), " - Results saved!"))
+#'   }
+#' }
+#' 
+
+
+
+
+
+
 #' Title
 #'
 #' @param cluster 
 #' @param samples 
-#' @param split_read_counts 
-#' @param all_split_reads_details 
-#' @param folder_name 
+#' @param split.read.counts 
+#' @param all.split.reads.details 
+#' @param folder.name 
 #'
 #' @return
 #' @export
 #'
 #' @examples
-get_never_misspliced <- function(cluster, 
-                                 samples,
-                                 split_read_counts,
-                                 all_split_reads_details,
-                                 folder_name,
-                                 replace) {
+GetNeverMisspliced <- function(cluster, 
+                               samples,
+                               split.read.counts,
+                               all.split.reads.details,
+                               folder.name,
+                               replace) {
   
   #######################################
   ## GET ALL JUNCTIONS THAT WERE NOT 
@@ -24,22 +184,22 @@ get_never_misspliced <- function(cluster,
   
   logger::log_info(paste0(Sys.time(), " - filtering junctions that are potentially not mis-spliced..."))
   
-  if ( file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) ) {
+  if ( file.exists(paste0(folder.name, "/", cluster, "_raw_distances_tidy.rds")) ) {
     
     # ## This should be zero
-    if ( setdiff(all_split_reads_details$junID, split_read_counts$junID) %>% length() > 0) {
+    if ( setdiff(all.split.reads.details$junID, split.read.counts$junID) %>% length() > 0) {
       logger::log_info("ERROR")
       break;
     }
     
-    all_split_reads_details$junID %>% length()
+    all.split.reads.details$junID %>% length()
   
     ## Get mis-spliced and junctions that were not mis-spliced in the first round
-    df_all_misspliced <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) %>%
+    df_all_misspliced <- readRDS(file = paste0(folder.name, "/", cluster, "_raw_distances_tidy.rds")) %>%
       data.table::as.data.table() %>%
       dplyr::distinct(ref_junID, .keep_all = T)
     
-    all_not_misspliced <- all_split_reads_details %>%
+    all_not_misspliced <- all.split.reads.details %>%
       data.table::as.data.table() %>%
       dplyr::filter( !(junID %in% df_all_misspliced$ref_junID) )
     
@@ -53,7 +213,7 @@ get_never_misspliced <- function(cluster,
     }
     
   } else {
-    logger::log_info(paste0("File: '", folder_name, "/", cluster, "_distances_raw.rds' doesn't exist."))
+    logger::log_info(paste0("File: '", folder.name, "/", cluster, "_distances_raw.rds' doesn't exist."))
     break;
   }
   
@@ -72,8 +232,8 @@ get_never_misspliced <- function(cluster,
   
   
   if ( replace || 
-       (!file.exists(paste0(folder_name, "/", cluster, "_all_notmisspliced.rds")) && 
-        !file.exists(paste0(folder_name, "/", cluster, "_all_misspliced_not_paired.rds"))) ) {
+       (!file.exists(paste0(folder.name, "/", cluster, "_all_notmisspliced.rds")) && 
+        !file.exists(paste0(folder.name, "/", cluster, "_all_misspliced_not_paired.rds"))) ) {
     
     ## Per each sample from the current cluster, we obtain all junctions, counts and ratios
     for (sample in samples) { 
@@ -83,11 +243,11 @@ get_never_misspliced <- function(cluster,
       
       # Every sampleID is unique, so the result of this comparison should be equal to 1
       
-      if ( length(which((colnames(split_read_counts) == sample) == TRUE)) == 1 ) { 
+      if ( length(which((colnames(split.read.counts) == sample) == TRUE)) == 1 ) { 
       
         
         ## Obtain the split reads from the current sample
-        split_read_counts_sample <- split_read_counts %>%
+        split_read_counts_sample <- split.read.counts %>%
           as_tibble()%>%
           dplyr::select(junID, all_of(sample %>% as.character())) 
         
@@ -328,11 +488,11 @@ get_never_misspliced <- function(cluster,
     } else { 
       
       logger::log_info(paste0(Sys.time(), " - ", junc_not_misspliced %>% length(), " not mis-spliced junctions!"))
-      folder_name <- paste0(folder_name, "/not-misspliced/")
-      dir.create(file.path(folder_name), showWarnings = F)
+      folder_path <- paste0(folder.name, "/not-misspliced/")
+      dir.create(file.path(folder_path), showWarnings = F)
       
-      saveRDS(object = junc_not_misspliced, file = paste0(folder_name, "/", cluster, "_all_notmisspliced.rds"))
-      saveRDS(object = junc_ignore, file = paste0(folder_name, "/", cluster, "_all_misspliced_not_paired.rds"))
+      saveRDS(object = junc_not_misspliced, file = paste0(folder_path, "/", cluster, "_all_notmisspliced.rds"))
+      saveRDS(object = junc_ignore, file = paste0(folder_path, "/", cluster, "_all_misspliced_not_paired.rds"))
       
       logger::log_info(paste0(Sys.time(), " - results saved!"))
       

@@ -27,7 +27,7 @@ library(protr)
 #' @export
 #'
 #' @examples
-generate_recount3_tpm <- function(recount3.project.IDs,
+GenerateRecount3TPM <- function(recount3.project.IDs,
                                   data.source,
                                   tpm.folder,
                                   results.folder) {

@@ -1,41 +1,31 @@
-source("/home/dzhang/projects/constraint_conservation_wd/constraint_conservation/conservation/conservation_general/conservation_general_functions_from_bw.R")
-source("/home/dzhang/projects/constraint_conservation_wd/constraint_conservation/constraint/constraint_general/constraint_general_functions_bw.R")
 
 #' Title
 #' Calculates the CDTS and PhastCons20 mean scores of the sequences overlapping the /+35bp sequence at the donor site of the intron 
 #' (i.e. / = the exon-intron junction), and the /+35bp sequence at the acceptor splice 
 #' site of the intron (i.e. the intron-exon junction)
 #' @param cluster 
-#' @param db_introns Dataframe of introns to calculate the scores
-#' @param folder_name 
+#' @param db.introns Dataframe of introns to calculate the scores
+#' @param folder.name 
 #'
 #' @return
 #' @export
 #'
 #' @examples
-generate_cdts_phastcons_scores <- function(db_introns = NULL,
-                                           cluster = NULL,
-                                           folder_name = NULL,
-                                           intron_size = c(100),
-                                           phastcons_type = c(17)) {
+GenerateCdtsPhastconsScores <- function(dependencies.folder,
+                                        db.introns = NULL,
+                                        cluster = NULL,
+                                        folder.name = NULL,
+                                        intron.size = 100,
+                                        phastcons.type = 17) {
   
-  
-  # load(file = "/data/constraint/CDTS_percentile_N7794_unrelated_all_chrs_gr.rda") 
-  
-  
-  if (is.null(db_introns) && !is.null(cluster)) {
-    ## Load the IDB 
-    db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
+  if (is.null(db.introns) && !is.null(cluster)) {
+    db.introns <- readRDS(file = paste0(folder.name, "/", cluster, "_db.introns.rds")) %>%
       distinct(ref_junID, .keep_all = T)
   }
-  
-  if ( !str_detect(string = db_introns[1, ]$seqnames, pattern = "chr") ) {
-    db_introns <- db_introns %>%
-      GRanges() %>% 
-      diffloop::addchr()
+  if ( !str_detect(string = db.introns[1, ]$seqnames, pattern = "chr") ) {
+    db.introns <- db.introns %>% GRanges() %>% diffloop::addchr()
   } else {
-    db_introns <- db_introns %>%
-      GRanges() 
+    db.introns <- db.introns %>% GRanges() 
   }
  
   
@@ -43,31 +33,30 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
   ## PHASTCONS SCORES
   ###########################################
   
-  for (i_size in intron_size) {
+  for (i_size in intron.size) {
     
-    # i_size <-intron_size[1]
+    # i_size <-intron.size[1]
     
-    for (p_type in phastcons_type) {
+    for (p_type in phastcons.type) {
       
-      # p_type <- phastcons_type[1]
+      # p_type <- phastcons.type[1]
       
       logger::log_info("PhastCons", p_type, "...")
       
-      bw_path = paste0("/data/conservation/phastCons/hg38.phastCons", p_type, "way.bw")
+      bw_path = paste0(dependencies.folder, "/hg38.phastCons", p_type, "way.bw")
       
-      if ( !file.exists(bw_path) ) {
-        paste0("PhastCons file '", bw_path, "' does not exist!") %>% logger::log_info()
-        break;
+      if (!file.exists(bw_path)) {
+        stop("PhastCons file '", bw_path, "' does not exist!") %>% logger::log_info()
       }
         
       # i_size <- 35
       
       ## Calculate donor scores
       logger::log_info(i_size, "bp - Calculating PhastCons" , p_type, " scores overlapping donor sequences...")
-      gr <- GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                   ranges = IRanges(start = db_introns %>% start(), 
-                                                    end = db_introns %>% start() + i_size))
-      values(gr) <- DataFrame(junID = (db_introns) %>% as.character() )
+      gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
+                                   ranges = IRanges(start = db.introns %>% start(), 
+                                                    end = db.introns %>% start() + i_size))
+      values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
       phastCons_5ss <- get_conservation_score_for_regions_bw(bw_path = bw_path,
                                                              gr = gr, 
                                                              summaryFun = "mean") %>% 
@@ -79,10 +68,10 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
       
       ## Calculate acceptor scores
       logger::log_info(i_size, "bp - Calculating PhastCons" , p_type, " scores overlapping acceptor sequences...")
-      gr <- GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                   ranges = IRanges(start = db_introns %>% end() - i_size, 
-                                                    end = db_introns %>% end()))
-      values(gr) <- DataFrame(junID = (db_introns) %>% as.character() )
+      gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
+                                   ranges = IRanges(start = db.introns %>% end() - i_size, 
+                                                    end = db.introns %>% end()))
+      values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
       phastCons_3ss <- get_conservation_score_for_regions_bw(bw_path = bw_path,
                                                              gr = gr, 
                                                              summaryFun = "mean") %>% 
@@ -92,7 +81,7 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
       
       
       ## Add columns to master data
-      db_introns <- db_introns %>%
+      db.introns <- db.introns %>%
         as_tibble() %>%
         left_join(phastCons_5ss %>% dplyr::select(junID, paste0("mean_phastCons", p_type, "way5ss_", i_size)),
                    by = "junID") %>%
@@ -116,19 +105,18 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
     # CDTS score value
     
 
-    bw_path = paste0(dependencies_folder, "/CDTS_percentile_N7794_unrelated_all_chrs.bw")
+    bw_path = file.path(dependencies.folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw")
     if (!file.exists(bw_path)) {
-      paste0("Constraint file '", bw_path, "' does not exist!") %>% logger::log_info()
-      break;
+      stop("Constraint file '", bw_path, "' does not exist!") %>% logger::log_info()
     }
 
 
     ## Calculate donor scores
     logger::log_info(i_size, "bp - CDTS calculating donor sequences...")
-    gr <- GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                 ranges = IRanges(start = db_introns %>% start(),
-                                                  end = db_introns %>% start() + i_size))
-    values(gr) <- DataFrame(junID = (db_introns) %>% as.character() )
+    gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
+                                 ranges = IRanges(start = db.introns %>% start(),
+                                                  end = db.introns %>% start() + i_size))
+    values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
     CDTS_5ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
                                                     gr = gr,
                                                     summaryFun = "mean") %>%
@@ -140,10 +128,10 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
 
     ## Calculate acceptor scores
     logger::log_info(i_size, "bp - CDTS calculating acceptor sequences....")
-    gr <- GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                 ranges = IRanges(start = db_introns %>% end() - i_size,
-                                                  end = db_introns %>% end()))
-    values(gr) <- DataFrame(junID = (db_introns) %>% as.character() )
+    gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
+                                 ranges = IRanges(start = db.introns %>% end() - i_size,
+                                                  end = db.introns %>% end()))
+    values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
     CDTS_3ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
                                                     gr = gr,
                                                     summaryFun = "mean") %>%
@@ -153,119 +141,13 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
     
     
     ## Add columns to master data
-    db_introns <- db_introns %>%
+    db.introns <- db.introns %>%
       as_tibble() %>%
       left_join(CDTS_5ss %>% dplyr::select(junID, paste0("mean_CDTS5ss_", i_size)),
                  by = "junID") %>%
       left_join(CDTS_3ss %>% dplyr::select(junID, paste0("mean_CDTS3ss_", i_size)),
                  by = "junID") %>%
       GRanges()
-    
-    # 
-    # ## 5'ss
-    # 
-    # logger::log_info(i_size, "bp - Calculating CDTS scores overlapping donor sequences...")
-    # overlaps_5ss <- GenomicRanges::findOverlaps(query = GRanges(seqnames = db_introns %>% seqnames,
-    #                                                             ranges = IRanges(start = db_introns %>% start,
-    #                                                                              end = db_introns %>% start + i_size),
-    #                                                             strand = db_introns %>% strand),
-    #                                             subject = CDTS_percentile_N7794_unrelated_all_chrs_gr,
-    #                                             type = "any",
-    #                                             select = "all")
-    # overlaps_5ss
-    # 
-    # 
-    # 
-    # hits_overlaps_5ss <- data.frame(ref_junID = db_introns[queryHits(overlaps_5ss),]$ref_junID,
-    #                                 CDTS_5ss_100 = CDTS_percentile_N7794_unrelated_all_chrs_gr[subjectHits(overlaps_5ss),]$CDTS) %>%
-    #   as_tibble()
-    # 
-    # ## 3'ss
-    # 
-    # logger::log_info(i_size, "bp - Calculating CDTS scores overlapping acceptor sequences...")
-    # overlaps_3ss <- GenomicRanges::findOverlaps(query = GRanges(seqnames = db_introns %>% seqnames,
-    #                                                             ranges = IRanges(start = db_introns %>% end - i_size,
-    #                                                                              end = db_introns %>% end),
-    #                                                             strand = db_introns$strand),
-    #                                             subject = CDTS_percentile_N7794_unrelated_all_chrs_gr,
-    #                                             type = "any",
-    #                                             select = "all")
-    # overlaps_3ss
-    # 
-    # 
-    # 
-    # hits_overlaps_3ss <- data.frame(ref_junID = db_introns[queryHits(overlaps_3ss),]$ref_junID,
-    #                                 CDTS_3ss_100 = CDTS_percentile_N7794_unrelated_all_chrs_gr[subjectHits(overlaps_3ss),]$CDTS) %>%
-    #   as_tibble()
-    # 
-    # 
-    # ## Merge 5' and 3'
-    # logger::log_info(i_size, "bp - merging results ...")
-    # 
-    # db_introns <- db_introns %>%
-    #   as_tibble() %>%
-    #   left_join(y = hits_overlaps_5ss,
-    #             by = "ref_junID") %>%
-    #   left_join(y = hits_overlaps_3ss,
-    #             by = "ref_junID") %>%
-    #   as_tibble() %>%
-    #   dplyr::group_by(ref_junID) %>%
-    #   mutate(CDTS_5ss_100_mean = CDTS_5ss_100 %>% mean) %>%
-    #   mutate(CDTS_3ss_100_mean = CDTS_3ss_100 %>% mean) %>%
-    #   ungroup() %>%
-    #   distinct(ref_junID, .keep_all = T) %>%
-    #   dplyr::select(-c(CDTS_5ss_100, CDTS_3ss_100))
-    # 
-    
-    # 
-    # ## Add CDTS scores 
-    # 
-    # db_introns <- db_introns %>%
-    #   as_tibble() %>%
-    #   left_join(CDTS_scores,
-    #             by = "ref_junID") 
-    
-    
-    
-    # # i_size <- 35
-    # 
-    # ## Calculate donor scores
-    # logger::log_info(i_size, "bp - CDTS calculating donor sequences")
-    # gr <- GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-    #                              ranges = IRanges(start = db_introns %>% start(), 
-    #                                               end = db_introns %>% start() + i_size))
-    # values(gr) <- DataFrame(ref_junID = (db_introns)$ref_junID )
-    # CDTS_5ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
-    #                                                 gr = gr,
-    #                                                 summaryFun = "mean") %>% 
-    #   as_tibble() %>%
-    #   dplyr::rename_with(.fn = ~paste0(., "5ss_", i_size), .cols = mean_CDTS)
-    # 
-    # 
-    # 
-    # 
-    # ## Calculate acceptor scores
-    # logger::log_info(i_size, "bp - CDTS calculating acceptor sequences")
-    # gr <- GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-    #                              ranges = IRanges(start = db_introns %>% end() - i_size, 
-    #                                               end = db_introns %>% end()))
-    # values(gr) <- DataFrame(ref_junID = (db_introns)$ref_junID )
-    # CDTS_3ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
-    #                                                 gr = gr, 
-    #                                                 summaryFun = "mean") %>% 
-    #   as_tibble()  %>%
-    #   dplyr::rename_with(.fn = ~paste0(., "3ss_", i_size), .cols = paste0("mean_CDTS"))
-    # 
-    
-    
-    ## Add columns to master data
-    # db_introns <- db_introns %>%
-    #   # as_tibble() %>%
-    #   # inner_join(CDTS_5ss %>% dplyr::select(ref_junID, paste0("mean_CDTS5ss_", i_size)),
-    #   #            by = "ref_junID") %>%
-    #   # inner_join(CDTS_3ss %>% dplyr::select(ref_junID, paste0("mean_CDTS3ss_", i_size)),
-    #   #            by = "ref_junID") %>%
-    #   GRanges()
     
   }
   
@@ -276,23 +158,79 @@ generate_cdts_phastcons_scores <- function(db_introns = NULL,
   
   if (!is.null(cluster)) {
 
-    saveRDS(object = db_introns,
-            file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-
+    saveRDS(object = db.introns, file = paste0(folder.name, "/", cluster, "_db.introns.rds"))
     logger::log_info(" - CDTS and PhastCons scores added! Database updated!")
 
-
     rm(gr)
-    rm(db_introns)
+    rm(db.introns)
     rm(phastCons_5ss)
     rm(phastCons_3ss)
 
   } else {
-    return(db_introns)
+    return(db.introns)
   }
-      
+}
+
+
+
+
+# Functions -------------------------------------------------------------------------------------------
+
+get_conservation_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "mean"){
+  
+  BigWigFile <- BigWigFile(bw_path)
+  
+  phast_cons_score <- bw_path %>% str_replace(".*/", "") %>% str_extract("phastCons.*way")
+  
+  gr_w_scores <- summary(BigWigFile, gr, size = 1L, type = summaryFun) %>% unlist()
+  
+  stopifnot((width(gr)  == width(gr_w_scores)))
+  
+  elementMetadata(gr)[[str_c(summaryFun, "_", phast_cons_score)]] <- gr_w_scores$score
+  
+  gr_w_scores <- gr
+  
+  return(gr_w_scores)
   
 }
+
+get_constraint_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "mean"){
+  
+  BigWigFile <- BigWigFile(bw_path)
+  
+  gr_w_scores <- summary(BigWigFile, gr, size = 1L, type = summaryFun) %>% unlist()
+  
+  stopifnot((width(gr)  == width(gr_w_scores)))
+  
+  elementMetadata(gr)[[str_c(summaryFun, "_CDTS")]] <- gr_w_scores$score
+  
+  gr_w_scores <- gr
+  
+  return(gr_w_scores)
+  
+}
+
+
+# Functions -------------------------------------------------------------------------------------------
+
+# to check whether the two methods of getting conservation return comparable answers
+# they do and also comparable to the UCSC browser, although slightly different for some which i believe if accounted for by rounding/aggregating errors
+# gr <- GRanges(c("chr8:69105760-69105804", "chr8:69105760-69105804"))
+#
+# system.time(
+#
+#   bw_method <- get_conservation_score_for_regions_bw(bw_path = "/data/conservation/phastCons/hg38.phastCons7way.bw",
+#                                                      gr = gr, summaryFun = "mean")
+# )
+#
+# system.time(
+#   old_method <- get_conservation_score_for_regions(conserv_score_to_load = "phast_cons_7", gr = gr, summaryFun = "mean")
+# )
+#
+# bw_method$mean_phastCons7_old <- old_method$mean_phast_cons_7
+#
+# bw_method
+
 # 
 # ## CONVERT TO BW FILE
 # 

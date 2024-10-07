@@ -9,9 +9,9 @@
 #' @export
 #'
 #' @examples
-generate_max_ent_score <- function(junc_tidy,
-                                   max_ent_tool_path,
-                                   homo_sapiens_fasta_path){
+GenerateMaxEntScore <- function(junc_tidy,
+                                max_ent_tool_path,
+                                homo_sapiens_fasta_path){
   
   junc_tidy <- junc_tidy %>% dplyr::as_tibble()
   

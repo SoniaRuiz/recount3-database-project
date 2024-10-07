@@ -8,10 +8,8 @@
 #' @export
 #'
 #' @examples
-sql_create_master_table_gene <- function(database.path,
-                                         #protein_biotype,
-                                         hg38,
-                                         gene.ids) {
+SqlCreateMasterTableGene <- function(database.path, hg38,
+                                     gene.ids) {
   
   
   logger::log_info(" --> Creating 'gene' master table...")

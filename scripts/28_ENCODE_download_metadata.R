@@ -1,7 +1,7 @@
 
 
 ## Load additional helper functions ----
-ENCODE_download_metadata <- function(experiment_type,
+ENCODEDownloadMetadata <- function(experiment_type,
                                      results_path,
                                      dependencies_path,
                                      required_cell_lines = c("HepG2", "K562"),
@@ -99,6 +99,9 @@ ENCODE_download_metadata <- function(experiment_type,
                                          input_Category = file.path(dependencies_path, "RBPs_subgroups.xlsx"),
                                          input_NMD = file.path(dependencies_path, "NMD.txt"),
                                          output_file = output_metadata)
+    
+    metadata_df <- metadata_df %>%
+      dplyr::filter(if_any(c("Splicing.regulation", Spliceosome, "Novel.RBP", "Exon.Junction.Complex", NMD), ~ . != 0))
     
   }
   

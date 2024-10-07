@@ -1,7 +1,8 @@
 
-generate_clinvar_data <- function(){
+GenerateClinvarData <- function(dependencies.folder){
   
-  clinvar_data <- read.table(file = "~/PROJECTS/splicing-accuracy-manuscript/dependencies/clinvar.vcf")
+  ## Download "clinvar.vcf" from https://www.ncbi.nlm.nih.gov/variation/view
+  clinvar_data <- read.table(file = file.path(dependencies.folder, "clinvar.vcf"))
   
   clinvar_likely_pathogenic <- clinvar_data %>%
     filter(
@@ -26,30 +27,26 @@ generate_clinvar_data <- function(){
                           QUAL = V6,
                           FILTER = V7)%>%
             mutate(end = start),
-          file = "~/PROJECTS/splicing-accuracy-manuscript/dependencies/clinvar_splicing_pathogenic.rds")
+          file = file.path(dependencies.folder, "clinvar_splicing_pathogenic.rds"))
 }
 
-add_clinvar_data <- function(df.all.introns) {
+AddClinvarData <- function(df.all.introns,
+                           dependencies.folder) {
   
-  
-  clinvar_gr <- readRDS(file = paste0(dependencies_folder, "/clinvar_splicing_pathogenic.rds")) %>% 
+  clinvar_gr <- if (!file.exists(file.path(dependencies.folder, "clinvar_splicing_pathogenic.rds"))) {
+    GenerateClinvarData(dependencies.folder)
+  } else {
+    readRDS(file = paste0(dependencies.folder, "/clinvar_splicing_pathogenic.rds")) 
+  } %>% 
     GenomicRanges::GRanges() %>% 
     diffloop::addchr()
   
   elementMetadata(clinvar_gr)[, "ID"] <- (clinvar_gr) %>% as.character()
   
-  
-  df_all_introns_gr <- df.all.introns %>%
-    mutate(clinvar = F) %>%
-    GRanges() 
-  
+  df_all_introns_gr <- df.all.introns %>% mutate(clinvar = F) %>% GRanges() 
   
   ## Find overlaps between clinvar mutations and mis-splicing ratios
-  overlaps <- GenomicRanges::findOverlaps(query = clinvar_gr,
-                                          subject = df_all_introns_gr,
-                                          type = "any")
-  
-  
+  overlaps <- GenomicRanges::findOverlaps(query = clinvar_gr, subject = df_all_introns_gr, type = "any")
   
   elementMetadata(clinvar_gr)[queryHits(overlaps), "intron_ID"] <- subjectHits(overlaps)
   elementMetadata(df_all_introns_gr)[subjectHits(overlaps), "clinvar"] <- T
@@ -65,11 +62,6 @@ add_clinvar_data <- function(df.all.introns) {
     ungroup() 
   
   elementMetadata(df_all_introns_gr)[subjectHits(overlaps), "clinvar"] <- T
-  #elementMetadata(df_all_introns_gr)[subjectHits(overlaps), "clinvar_locus"] <- clinvar_hits$ID_list
-  #elementMetadata(df_all_introns_gr)[subjectHits(overlaps), "CLNSIG_list"] <- clinvar_hits$CLNSIG_list
-  #elementMetadata(df_all_introns_gr)[subjectHits(overlaps), "CLNVC_list"] <- clinvar_hits$CLNVC_list
-  #elementMetadata(df_all_introns_gr)[subjectHits(overlaps), "MC_list"] <- clinvar_hits$MC_list
-  
   
   logger::log_info(df_all_introns_gr %>% as_tibble() %>% filter(clinvar == T) %>%  nrow(), " introns containing ClinVar variants")
   

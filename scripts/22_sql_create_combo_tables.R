@@ -10,10 +10,11 @@
 #' @export
 #'
 #' @examples
-sql_create_combo_tables <- function(database.path,
-                                    recount3.project.IDs = NULL,
-                                    database.folder,
-                                    results.folder) {
+SqlCreateComboTables <- function(database.path,
+                                 database.folder,
+                                 results.folder,
+                                 dependencies.folder,
+                                 recount3.project.IDs = NULL) {
   
   
   con <- dbConnect(RSQLite::SQLite(), database.path)
@@ -70,10 +71,8 @@ sql_create_combo_tables <- function(database.path,
       
       
       
-      if ( file.exists(paste0(results_folder_local, "/base_data/", 
-                              project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
-           file.exists(paste0(results_folder_local, "/base_data/", 
-                              project_id, "_", cluster_id, "_split_read_counts_combos.rds")) ) {
+      if ( file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
+           file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds")) ) {
         
       
         ## LOAD BASE DATA ONLY FOR THE CURRENT CLUSTER ID -------------------------------------------------
@@ -107,7 +106,7 @@ sql_create_combo_tables <- function(database.path,
         
         
         ## Add coverage detected for the introns in the current tissue
-        split_read_counts_intron <- generate_coverage(split_read_counts = split_read_counts,
+        split_read_counts_intron <- GenerateCoverage(split_read_counts = split_read_counts,
                                                       samples = samples,
                                                       junIDs = split_read_counts$junID) %>%
           dplyr::rename(ref_n_individuals = n_individuals,
@@ -203,32 +202,22 @@ sql_create_combo_tables <- function(database.path,
         logger::log_info(" --> adding the MaxEntScan info ...")
         
         wd <- getwd()
-        if ( !file.exists(paste0(dependencies_folder, 
-                                 "/Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
-          logger::log_info(paste0("ERROR! File dependency 'Homo_sapiens.GRCh38.dna.primary_assembly.fa'
-                                  does not exist within the specified dependencies folder."))
-          break;
+        if ( !file.exists(paste0(dependencies.folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
+          stop("ERROR! File dependency 'Homo_sapiens.GRCh38.dna.primary_assembly.fa' does not exist within the specified dependencies folder.")
         }
         ## Add MaxEntScan score to the split reads
-        db_introns_tidy <- generate_max_ent_score(junc_tidy = db_introns_tidy ,
-                                                       max_ent_tool_path = paste0(dependencies_folder, "/fordownload/"),
-                                                       homo_sapiens_fasta_path = paste0(dependencies_folder, 
-                                                                                        "/Homo_sapiens.GRCh38.dna.primary_assembly.fa") ) %>% as_tibble()
+        db_introns_tidy <- GenerateMaxEntScore(junc_tidy = db_introns_tidy ,
+                                               max_ent_tool_path = paste0(dependencies.folder, "/fordownload/"),
+                                               homo_sapiens_fasta_path = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa") ) %>% as_tibble()
         
         db_introns_tidy <- db_introns_tidy %>% 
-          dplyr::select(-donorSeqStart,
-                        -donorSeqStop,
-                        -AcceptorSeqStart,
-                        -AcceptorSeqStop) %>%
-          dplyr::rename(ref_donor_sequence = donor_sequence,
-                        ref_acceptor_sequence = acceptor_sequence)
+          dplyr::select(-c(donorSeqStart, donorSeqStop, AcceptorSeqStart, AcceptorSeqStop)) %>%
+          dplyr::rename(ref_donor_sequence = donor_sequence, ref_acceptor_sequence = acceptor_sequence)
         
         setwd(wd)
    
-        
         db_introns_tidy <- db_introns_tidy %>%
-          dplyr::rename(ref_mes5ss = ss5score, 
-                        ref_mes3ss = ss3score) %>%
+          dplyr::rename(ref_mes5ss = ss5score, ref_mes3ss = ss3score) %>%
           dplyr::relocate(c(ref_mes5ss, ref_mes3ss), .before = transcript_id ) %>% 
           as_tibble()
         
@@ -241,31 +230,22 @@ sql_create_combo_tables <- function(database.path,
         
         logger::log_info("adding CDTS and Conservation scores...")
         
-        df_all_introns <- generate_cdts_phastcons_scores(db_introns = db_introns_tidy,
-                                                         intron_size = c(100),
-                                                         phastcons_type = 17) %>%
-          as_tibble()
-        
-        df_all_introns <- df_all_introns  %>%
-          mutate_if(is.numeric, ~replace_na(., 0))
-        
+        df_all_introns <- GenerateCdtsPhastconsScores(db_introns = db_introns_tidy, intron_size = 100, phastcons_type = 17) %>% as_tibble()
+        df_all_introns <- df_all_introns %>% mutate_if(is.numeric, ~replace_na(., 0))
         
         df_all_introns %>% as_tibble()
         rm(db_introns_tidy)
-        
         
         
         #########################################
         ## INTRONS - ADD THE TRANSCRIPT BIOTYPE
         #########################################
         
-        df_biotype_junID <- readRDS(file = paste0(database.folder, "/all_split_reads_qc_level1_PC_biotype.rds")) %>% as_tibble()
+        df_biotype_junID <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds")) %>% as_tibble()
         
         any(str_detect(df_biotype_junID$junID, pattern = "\\*"))
         
-        df_all_introns <- df_all_introns %>%
-          inner_join(y = df_biotype_junID %>% dplyr::select(junID, protein_coding),
-                     by = c("junID"))
+        df_all_introns <- df_all_introns %>% inner_join(y = df_biotype_junID %>% dplyr::select(junID, protein_coding), by = c("junID"))
         
         logger::log_info(df_all_introns$junID %>% unique %>% length(), " introns to be stored!")
         
@@ -346,7 +326,7 @@ sql_create_combo_tables <- function(database.path,
           
       } else {
         DBI::dbDisconnect(conn = con) 
-        logger::log_info("Table '", cluster_id, "_", project_id, "_combo' exist!")
+        logger::log_info("Dependency files do not exist! '", cluster_id, "_", project_id, "'!")
       }
     }
     gc()

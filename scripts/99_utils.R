@@ -1,26 +1,39 @@
+#' Remove the junctions shorter than 25bp.
+#'
+#' @param input.SR.details Dataframe object with the relevant junctions.
+#'
+#' @return Junctions bigger than 25bp.
+#' @export
+RemoveShortJunctions <- function(input.SR.details) {
+  logger::log_info("\t\t Removing junctions shorter than 25bp.")
+  output_SR_details <- input.SR.details %>%
+    dplyr::filter(width >= 25)
+  
+  return(output_SR_details)
+  
+}
 
 #' Title
 #' Removes all split reads with coordinates overlapping any of the regions published within the ENCODE blacklist 
 #' @param GRdata Genome Ranges object with the split reads to analyse
-#' @param blacklist_path Local path to the .bed file containing the ENCODE blacklist 
+#' @param blacklist.path Local path to the .bed file containing the ENCODE blacklist 
 #'
 #' @return The 'GRdata' object without split reads overlapping the ENCODE blacklist 
 #' @export
 #'
 #' @examples
-remove_encode_blacklist_regions <- function(GRdata,
-                                            blacklist_path) {
+RemoveEncodeBlacklistRegions <- function(GRdata, blacklist.path) {
   
   
   if (!exists("encode_blacklist_hg38")) {
-    encode_blacklist_hg38 <- rtracklayer::import(con = blacklist_path) %>% diffloop::rmchr()
+    encode_blacklist_hg38 <- rtracklayer::import(con = blacklist.path) %>% diffloop::rmchr()
   } else {
     print("'encode_blacklist_hg38' file already loaded!")
   }
   
   overlaped_junctions <- GenomicRanges::findOverlaps(query = encode_blacklist_hg38, 
                                                      subject = GRdata %>% diffloop::rmchr(),
-                                                     #type = "any",
+                                                     type = "any",
                                                      ignore.strand = F)
   
   ## JuncID indexes to be removed: they overlap with a black region
@@ -38,13 +51,103 @@ remove_encode_blacklist_regions <- function(GRdata,
   return(GRdata)
 }
 
+#' Loads the reference genome into memory
+#'
+#' The different versions can be downloaded
+#' \href{http://ftp.ensembl.org/pub/release-105/gtf/homo_sapiens/}{here}.
+#'
+#' @param gtf_path Path to the reference genome GTF file.
+#'
+#' @return Connection to the reference genome DB.
+#' @export
+LoadEdb <- function(gtf_path) {
+  if (!exists("edb")) {
+    logger::log_info("\t\t Loading the reference genome.")
+    edb <<- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+    edb <<- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+  } else {
+    logger::log_info("\t\t Variable 'edb' already loaded!")
+  }
+  return(edb)
+}
 
 
+#' Annotate and categorize every junction
+#'
+#' @param GRdata GRanges class object with the relevant junctions.
+#' @param edb The connection to the reference genome DB.
+#'
+#' @return Annotated input by dasper.
+#' @export 
+AnnotateDasper <- function(GRdata, edb) {
+  logger::log_info("\t\t Annotating using dasper::junction_annot().")
+  GRdata <- dasper::junction_annot(GRdata,
+                                   ref = edb,
+                                   ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"),
+                                   ref_cols_to_merge = c("gene_id", "gene_name", "tx_id")
+  )
+  
+  return(GRdata)
+}
+
+
+#' Remove the junctions with uncategorized classification.
+#'
+#' @param input.SR.details Dataframe object with the relevant junctions.
+#'
+#' @return Junctions categorized as 'annotated', 'novel_donor', 'novel_acceptor', 'novel combo' or 'novel exon skip' 
+#' @export
+RemoveUncategorizedJunctions <- function(input.SR.details) {
+  
+  logger::log_info("\t\t Removing split reads not classified as 'annotated', 'novel_donor', 'novel_acceptor', 'novel combo' or 'novel exon skip' ...")
+
+  ## Subset columns
+  input.SR.details <- input.SR.details %>% 
+    dplyr::select(any_of(c("junID", "seqnames", "start", "end", "width", "strand",
+                           "gene_id_junction", "in_ref", "type", "tx_id_junction",
+                           "annotated", "left_motif", "right_motif", "n_projects")))
+  
+  ## Only use annotated introns, novel donor and novel acceptor junctions
+  output_SR_details <- input.SR.details %>%
+    filter(type %in% c("annotated", "novel_donor", "novel_acceptor", "novel_combo", "novel_exon_skip"))
+  
+  return(output_SR_details)
+  
+}
+
+
+#' Remove the junctions from ambiguous genes.
+#'
+#' @param input_SR_details Dataframe object with the relevant junctions.
+#'
+#' @return Junctions assigned to only one gene.
+#' @export
+RemoveAmbiguousJunctions <- function(input_SR_details, database.folder) {
+  
+  logger::log_info("\t\t Removing junctions associated to more than one gene.")
+
+  
+  input_SR_details <- input_SR_details %>%
+    as_tibble() %>%
+    distinct(junID, .keep_all = T) %>% 
+    rowwise() %>%
+    mutate(ambiguous = ifelse(gene_id_junction %>% unlist() %>% length() > 1, T, F))
+  
+  ambiguous_introns <- input_SR_details %>% dplyr::filter(ambiguous == T)
+  
+  logger::log_info("\t\t Removing ", nrow(ambiguous_introns)," ambiguous junctions!")
+  
+  saveRDS(object = ambiguous_introns, file = file.path(database.folder, "all_ambiguous_jxn.rds"))
+  
+  return(input_SR_details %>%
+           filter(ambiguous == F))
+  
+}
 
 
 #' Title
 #' Calculates the cummulative number of reads and number of samples for a given junction
-#' @param split_read_counts dataframe of reads counts per junction. The first column correspond to the junction ID and the rest of the columns
+#' @param split.read.counts dataframe of reads counts per junction. The first column correspond to the junction ID and the rest of the columns
 #' correspond to the samples. Each value represents the number of reads for a given junction in a given sample.
 #' @param samples Vector of samples to consider
 #' @param junIDs List of junction IDs to consider
@@ -53,19 +156,17 @@ remove_encode_blacklist_regions <- function(GRdata,
 #' @export
 #'
 #' @examples
-generate_coverage <- function(split_read_counts,
-                              samples,
-                              junIDs) {
+GenerateCoverage <- function(split.read.counts, samples, junIDs) {
   
   # stopifnot(
   #   "Still there are split reads with less than 2 supportive reads" =
-  #     split_read_counts %>% 
+  #     split.read.counts %>% 
   #     mutate(sumCounts = rowSums(select(., !contains("junID")))) %>%
   #     filter(sumCounts <= 2) %>% 
   #     nrow() == 0
   # )
   
-  split_read_counts_intron <- split_read_counts %>%
+  split_read_counts_intron <- split.read.counts %>%
     dplyr::filter(junID %in% junIDs) %>%
     dplyr::select(junID, all_of(samples %>% as.character())) 
   
@@ -95,7 +196,7 @@ generate_coverage <- function(split_read_counts,
 #' @export
 #'
 #' @examples
-get_genomic_coordinates <- function(coordinates) {
+GetGenomicCoordinates <- function(coordinates) {
   
   map_df(coordinates, function(coordinate) {
     # coordinate <- df_gene_splicing$novel_coordinates[1]
@@ -126,14 +227,13 @@ get_genomic_coordinates <- function(coordinates) {
 #' Title
 #' Function to calculate the TPM value per gene
 #' @param rse RangedSummarizedExperiment-class object
-#' @param ref_tidy Reference transcriptome
+#' @param ref.tidy Reference transcriptome
 #'
 #' @return
 #' @export
 #'
 #' @examples
-generate_tpm <- function(rse, 
-                         ref_tidy) {
+GenerateTPM <- function(rse, ref.tidy) {
   
   
   # Remove anything after . in ensembl id
@@ -157,7 +257,7 @@ generate_tpm <- function(rse,
       values_to = "counts"
     ) %>% 
     dplyr::inner_join(
-      ref_tidy %>% 
+      ref.tidy %>% 
         as_tibble() %>% 
         dplyr::select(gene_id, width),
       by = c("gene" = "gene_id")
@@ -200,8 +300,7 @@ generate_tpm <- function(rse,
 #' @export
 #'
 #' @examples
-tidy_sample_metadata <- function(sample.metadata,
-                                 samples) {
+TidySampleMetadata <- function(sample.metadata, samples) {
   
   
   
@@ -246,6 +345,7 @@ tidy_sample_metadata <- function(sample.metadata,
              dplyr::select(all_of(covariates))))
 }
 
+
 #' Title
 #' Calculates the mode value from a vector of numbers
 #' @param vector 
@@ -254,7 +354,7 @@ tidy_sample_metadata <- function(sample.metadata,
 #' @export
 #'
 #' @examples
-get_mode <- function(vector) {
+GetMode <- function(vector) {
   uniqv <- unique(vector)
   uniqv[which.max(tabulate(match(vector, uniqv)))]
 }

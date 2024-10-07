@@ -10,10 +10,10 @@
 #' @export
 #'
 #' @examples
-sql_create_child_tables <- function(database.path,
-                                    recount3.project.IDs = NULL,
-                                    database.folder,
-                                    results.folder) {
+SqlCreateChildTables <- function(database.path,
+                                 database.folder,
+                                 results.folder,
+                                 recount3.project.IDs = NULL) {
   
   
   ###########################

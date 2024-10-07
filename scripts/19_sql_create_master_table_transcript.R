@@ -9,19 +9,19 @@
 #' @export
 #'
 #' @examples
-sql_create_master_table_transcript  <- function(database.path,
-                                                gene.ids,
-                                                hg38,
-                                                tx.ids) {
+SqlCreateMasterTableTranscript  <- function(database.path,
+                                            gene.ids,
+                                            dependencies.folder,
+                                            hg38,
+                                            tx.ids) {
   
   
   ## Load MANE transcripts
   
-  hg_mane_transcripts <- rtracklayer::import(con = paste0(dependencies_folder,
-                                              "/MANE.GRCh38.v1.0.ensembl_genomic.gtf")) %>%
+  hg_mane_transcripts <- rtracklayer::import(con = file.path(dependencies.folder, "MANE.GRCh38.v1.0.ensembl_genomic.gtf")) %>%
     as_tibble() %>%
-    dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
-                  -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+    dplyr::select(-c(source, score, phase, gene_id, gene_type, tag, protein_id,
+                     db_xref, transcript_type, exon_id, exon_number, width)) %>%
     mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
     drop_na() %>%
     dplyr::filter(type == "transcript") %>%
@@ -37,10 +37,8 @@ sql_create_master_table_transcript  <- function(database.path,
   ## GET TRANSCRIPT ID
   hg38_transcripts_gene <- hg38 %>%
     as_tibble() %>%
-    dplyr::filter(transcript_id %in% tx.ids$tx_id_junction,
-                  type == "transcript") %>%
+    dplyr::filter(transcript_id %in% tx.ids$tx_id_junction, type == "transcript") %>%
     mutate(gene_id = str_sub(gene_id, start = 1, end = 15)) %>%
-    #distinct(gene_id, .keep_all = T) %>%
     dplyr::filter(gene_id %in% gene.ids$gene_id) %>%
     dplyr::select(transcript_id, TSL = transcript_support_level, gene_id, transcript_biotype) %>%
     mutate(TSL = str_sub(TSL, start = 1, end = 2) %>% as.integer())
@@ -50,11 +48,8 @@ sql_create_master_table_transcript  <- function(database.path,
   
   ## ADD MANE INFO
   hg38_transcripts_gene_mane <- hg38_transcripts_gene %>%
-    left_join(y = hg_mane_transcripts,
-              by = "transcript_id" )
+    left_join(y = hg_mane_transcripts, by = "transcript_id" )
   hg38_transcripts_gene_mane[is.na(hg38_transcripts_gene_mane[,"MANE"]),"MANE"] <- F
-  
-  
   
   ## ADD THE GENE FOREING KEY
   logger::log_info(paste0(Sys.time(), " --> adding GENE foreing key to the transcripts..."))
@@ -64,8 +59,7 @@ sql_create_master_table_transcript  <- function(database.path,
   
   ## Add the GENE ID for the foreign key
   hg38_transcripts_gene_mane <- hg38_transcripts_gene_mane %>%
-    inner_join(df_genes %>% dplyr::select(id, gene_id),
-               by = "gene_id") %>%
+    inner_join(df_genes %>% dplyr::select(id, gene_id), by = "gene_id") %>%
     dplyr::select(-gene_id) %>%
     dplyr::rename(gene_id = id) 
   
@@ -94,14 +88,12 @@ sql_create_master_table_transcript  <- function(database.path,
   
   logger::log_info(" --> 'Transcript' table created!")
   
-  
   if ( any(duplicated(hg38_transcripts_final$transcript_id)) ) {
     logger::log_info("ERROR! some novel junctions are duplicated")
   }
   DBI::dbAppendTable(conn = con,
                      name = "transcript", 
                      value = hg38_transcripts_final)
-  
   
   logger::log_info(" --> 'Transcript' table populated!") 
   logger::log_info(" --> ", hg38_transcripts_final %>% nrow(), " transcripts stored!")
