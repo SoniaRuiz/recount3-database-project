@@ -1,3 +1,24 @@
+##############################################################
+## CODE Adapted from:
+## https://github.com/guillermo1996/ENCODE_Metadata_Extraction
+##############################################################
+
+#' Title
+#' Prepares the junction extraction, QC and annotation from each shRNA RBP knockdown experiment from the ENCODE platform
+#' @param metadata 
+#' @param RBP.source.path 
+#' @param results.path 
+#' @param database.path 
+#' @param gtf.path 
+#' @param gtf.version 
+#' @param blacklist.path 
+#' @param ENCODE.silencing.series 
+#' @param num.cores 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 PrepareEncodeData <- function(metadata,
                               RBP.source.path,
                               results.path,
@@ -10,7 +31,7 @@ PrepareEncodeData <- function(metadata,
   
   
   logger::log_info(paste0(Sys.time(), "\t\t starting junction reading for the RPBs..."))
-
+  
   JunctionReading(metadata = metadata,
                   RBP.source.path = RBP.source.path,
                   results.path = results.path,
@@ -18,7 +39,7 @@ PrepareEncodeData <- function(metadata,
                   ENCODE.silencing.series,
                   num.cores = 8)
   gc()
-
+  
   logger::log_info(paste0(Sys.time(), "\t\t starting the creation of Level QC1 file..."))
   CreateLevelQ1File(database.path = database.path,
                     blacklist.path,
@@ -36,6 +57,10 @@ PrepareEncodeData <- function(metadata,
   
 }
 
+
+
+
+## HELPER FUNCTIONS ----------------------------------------------------------------------
 
 
 
@@ -118,61 +143,61 @@ JunctionReading <- function(metadata,
       all_junc <- foreach(i = 1:nrow(cluster_metadata %>% distinct(sample_id)), 
                           .export=c("RBP","RBP.source.path"),
                           .combine = 'rbind', .packages = c("tidyverse")) %dopar% {
-        
-        ## i = 1
-        ## Definition of the variables
-        sample_id <- cluster_metadata[i, ] %>% pull(sample_id)
-        junc_path <- file.path(RBP.source.path, RBP, cluster, paste0(sample_id, ".bam.sort.s0.junc"))
-        
-        logger::log_info("\t Reading junctions from ", RBP)
-        
-        if(!file.exists(junc_path)) return(tibble())
-        
-        ## Read the junction file into a tibble using readr::read_table()
-        ## The "locale" argument is to read comma separated values (i.e. 25,12)
-        junc <- readr::read_table(
-          junc_path,
-          col_names = F,
-          show_col_types = F,
-          progress = F,
-          locale = readr::locale(grouping_mark = "")
-        )
-        
-        ## Transformations of the junctions
-        junc <- junc %>%
-          dplyr::select(
-            chr = X1,
-            start = X2,
-            stop = X3,
-            junID = X4,
-            reads = X5,
-            strand = X6,
-            blockSizes = X11
-          ) %>%
-          dplyr::mutate(strand = ifelse(strand == "?", "*", strand)) %>%
-          dplyr::mutate(sampleID = sample_id) %>%
-          tidyr::separate(col = blockSizes, sep = ",", c("blockSizesStart", "blockSizesEnd"), conver = T) %>%
-          dplyr::mutate(start = start + blockSizesStart + 1, stop = stop - blockSizesEnd) %>%
-          GenomicRanges::GRanges() %>%
-          diffloop::rmchr() 
-        
-        tryCatch(
-          eval(
-            junc %>%
-              GenomeInfoDb::keepSeqlevels(value = c(seq(1, 22) %>% as.character(), "X", "Y"), pruning.mode = "tidy") %>%
-              tibble::as_tibble() %>%
-              dplyr::mutate(
-                seqnames = as.character(seqnames),
-                strand = as.character(strand)
-              ) %>%
-              dplyr::select(-junID, -blockSizesStart, -blockSizesEnd) %>%
-              return()
-          ),
-          error = function(e) {
-            return(tibble())
-          }
-        )
-      }
+                            
+                            ## i = 1
+                            ## Definition of the variables
+                            sample_id <- cluster_metadata[i, ] %>% pull(sample_id)
+                            junc_path <- file.path(RBP.source.path, RBP, cluster, paste0(sample_id, ".bam.sort.s0.junc"))
+                            
+                            logger::log_info("\t Reading junctions from ", RBP)
+                            
+                            if(!file.exists(junc_path)) return(tibble())
+                            
+                            ## Read the junction file into a tibble using readr::read_table()
+                            ## The "locale" argument is to read comma separated values (i.e. 25,12)
+                            junc <- readr::read_table(
+                              junc_path,
+                              col_names = F,
+                              show_col_types = F,
+                              progress = F,
+                              locale = readr::locale(grouping_mark = "")
+                            )
+                            
+                            ## Transformations of the junctions
+                            junc <- junc %>%
+                              dplyr::select(
+                                chr = X1,
+                                start = X2,
+                                stop = X3,
+                                junID = X4,
+                                reads = X5,
+                                strand = X6,
+                                blockSizes = X11
+                              ) %>%
+                              dplyr::mutate(strand = ifelse(strand == "?", "*", strand)) %>%
+                              dplyr::mutate(sampleID = sample_id) %>%
+                              tidyr::separate(col = blockSizes, sep = ",", c("blockSizesStart", "blockSizesEnd"), conver = T) %>%
+                              dplyr::mutate(start = start + blockSizesStart + 1, stop = stop - blockSizesEnd) %>%
+                              GenomicRanges::GRanges() %>%
+                              diffloop::rmchr() 
+                            
+                            tryCatch(
+                              eval(
+                                junc %>%
+                                  GenomeInfoDb::keepSeqlevels(value = c(seq(1, 22) %>% as.character(), "X", "Y"), pruning.mode = "tidy") %>%
+                                  tibble::as_tibble() %>%
+                                  dplyr::mutate(
+                                    seqnames = as.character(seqnames),
+                                    strand = as.character(strand)
+                                  ) %>%
+                                  dplyr::select(-junID, -blockSizesStart, -blockSizesEnd) %>%
+                                  return()
+                              ),
+                              error = function(e) {
+                                return(tibble())
+                              }
+                            )
+                          }
       ## Stop the parallel cluster
       parallel::stopCluster(cl)
       
@@ -224,7 +249,7 @@ CreateLevelQ1File <- function(database.path,
   
   logger::log_info("\t Creating the 'all_split_reads_qc_level1.rds' file...")
   
-
+  
   all_junc_combined <- readRDS(paste0(database.path, "all_split_reads_raw.rds")) %>% as_tibble()
   all_junc_combined %>% head()
   
@@ -288,7 +313,7 @@ CreateBaseDataPerRBP <- function(metadata,
                                  gtf.version,
                                  database.path) {
   
- 
+  
   all_split_reads_qc_level1 <- readRDS(file = file.path(database.path, gtf.version, "all_split_reads_qc_level1.rds")) 
   target_genes <- metadata %>% pull(target_gene) %>% unique()
   
@@ -309,8 +334,7 @@ CreateBaseDataPerRBP <- function(metadata,
         logger::log_info("\t Working with ", RBP, " junctions....")
         
         cluster_metadata <- metadata %>% 
-          filter(target_gene == RBP,
-                 experiment_type == cluster)
+          filter(target_gene == RBP, experiment_type == cluster)
         
         ## Read the samples used
         samples_used <- readRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_samples_used.rds")))
@@ -330,21 +354,42 @@ CreateBaseDataPerRBP <- function(metadata,
         
         
         ## Save the split read counts for the current sample cluster
+        
+        ## 1. Novel donor, novel acceptor and annotated introns
         split_read_counts <- all_junc_tidy  %>% 
-          filter(sampleID %in% samples_used) %>%
+          filter(sampleID %in% samples_used,
+                 type %in% c("annotated", "novel_donor", "novel_acceptor")) %>%
           dplyr::select(junID, reads, sampleID) %>%
           tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
-          mutate(across(everything(), .fns = ~replace_na(.,0))) %>%
+          mutate(across(everything(), .fns = ~replace_na(.,0)))
+        split_read_counts %>%
           saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts.rds")))
-        
-        
         ## Save the details about the split reads for the current sample cluster
         all_junc_tidy %>%
+          filter(junID %in% split_read_counts$junID) %>%
           dplyr::bind_rows() %>% 
           dplyr::distinct() %>%
           dplyr::distinct(junID, .keep_all = T) %>%
           dplyr::select(-sampleID) %>%
           saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads.rds")))
+        
+        ## 2. Novel combos
+        split_read_counts_combos <- all_junc_tidy  %>% 
+          filter(sampleID %in% samples_used, type == "novel_combo") %>%
+          dplyr::select(junID, reads, sampleID) %>%
+          tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
+          mutate(across(everything(), .fns = ~replace_na(.,0)))
+        split_read_counts_combos %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts_combos.rds")))
+        ## Save the details about the split reads for the current sample cluster
+        all_junc_tidy %>%
+          filter(junID %in% split_read_counts_combos$junID) %>%
+          dplyr::bind_rows() %>% 
+          dplyr::distinct() %>%
+          dplyr::distinct(junID, .keep_all = T) %>%
+          dplyr::select(-sampleID) %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_combos.rds")))
+        
         
       } else {
         logger::log_info("\t ", RBP, " does not have junctions.")
@@ -352,3 +397,5 @@ CreateBaseDataPerRBP <- function(metadata,
     }
   }
 }
+
+#32

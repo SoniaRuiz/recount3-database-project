@@ -47,12 +47,10 @@ dir.create(path = args$results_folder, recursive = T, showWarnings = F)
 dir.create(path = args$figures_folder, recursive = T, showWarnings = F)
 
 
-log_file <- here::here("logs/", paste0("Splicing_Analysis_ENCODE_",gtf_version,"_",analysis_type,".log"))
+log_file <- here::here("logs/", paste0("Splicing_Analysis_ENCODE_", gtf_version, "_", analysis_type, ".log"))
 logger::log_appender(logger::appender_tee(log_file, append = T))
 logger_layout <- logger::layout_glue_generator(format = '[{time}] [{level}] {msg}')
 logger::log_layout(logger_layout)
-
-
 
 
 
@@ -115,12 +113,15 @@ download_bams = T
 if (download_bams) {
   
   ## 2. Download WesternBlotting PCR efficiency
-  DownloadKnockdownEfficiencyWB(metadata = metadata_RBPs, results.path = args$results_folder)
+  #DownloadKnockdownEfficiencyWB(metadata = metadata_RBPs, results.path = args$results_folder)
   
-  ## 3. Download .bam files
-  ENCODEDownloadBams(metadata_df = metadata_RBPs, results_path = args$results_folder,
-                     regtools_path = "/home/grocamora/tools/regtools/build/",
-                     samtools_path = "/home/grocamora/tools/samtools/bin/")
+  ## 3. Download TPM
+  #DownloadKnockdownEfficiencyTPM(metadata = metadata_RBPs, results.path = args$results_folder)
+  
+  ## 4. Download .bam files
+  ENCODEDownloadBams(metadata = metadata_RBPs, results.path = args$results_folder,
+                     regtools.path = "/home/grocamora/tools/regtools/build/",
+                     samtools.path = "/home/grocamora/tools/samtools/bin/")
 }
 
 #####################################
@@ -159,6 +160,9 @@ for (gtf_version in gtf_versions) {
                     num.cores = 8)
   gc()
 
+  
+  
+  
   #################################################
   ## JUNCTION PAIRING
 

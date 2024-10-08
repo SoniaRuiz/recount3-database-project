@@ -32,7 +32,7 @@ SqlDatabaseGeneration <- function(database.path,
 
   
   if (!is.null(remove.all)) {
-    SqlRemoveTables(database.path, all = remove.all)
+    SqlRemoveTables(database.path, all = remove.all, con)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   }
@@ -48,7 +48,7 @@ SqlDatabaseGeneration <- function(database.path,
     logger::log_info("table 'metadata' exists!")
   }
   
-  if ( !any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
+  if ( !any(tables %in% c('intron', 'novel', 'gene', 'transcript', 'combo')) ) {
     logger::log_info("\t Creating master tables ...")
     SqlCreateMasterTables(database.path = database.path,
                           gtf.version = gtf.version,
@@ -56,6 +56,8 @@ SqlDatabaseGeneration <- function(database.path,
                           results.folder = results.folder,
                           dependencies.folder = dependencies.folder,
                           discard.minor.introns = discard.minor.introns)
+    
+    
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   } else {
@@ -64,15 +66,10 @@ SqlDatabaseGeneration <- function(database.path,
   
   logger::log_info("\t Creating child tables ...")
   SqlCreateChildTables(database.path,
-                          recount3.project.IDs,
-                          database.folder,
-                          results.folder)
+                       recount3.project.IDs,
+                       database.folder,
+                       results.folder)
   
   
-  logger::log_info("\t Creating combo tables ...")
-  SqlCreateComboTables(database.path = database.path,
-                       dependencies.folder = dependencies.folder,
-                       recount3.project.IDs = recount3.project.IDs,
-                       database.folder = database.folder,
-                       results.folder = results.folder)
+
 }

@@ -1,23 +1,43 @@
+##############################################################
+## CODE Adapted from:
+## https://github.com/guillermo1996/ENCODE_Metadata_Extraction
+##############################################################
 
 
-## Load additional helper functions ----
+
+#' Title
+#' Downloads the metadata from each shRNA RBP knockdown experiment from the ENCODE platform
+#' @param experiment_type 
+#' @param results_path 
+#' @param dependencies_path 
+#' @param required_cell_lines 
+#' @param valid_genome_annotation 
+#' @param valid_file_format 
+#' @param valid_output_type 
+#' @param valid_nucleic_acid_type 
+#' @param download_method 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 ENCODEDownloadMetadata <- function(experiment_type,
-                                     results_path,
-                                     dependencies_path,
-                                     required_cell_lines = c("HepG2", "K562"),
-                                     valid_genome_annotation = "V29",
-                                     valid_file_format = "bam",
-                                     valid_output_type = "alignments",
-                                     valid_nucleic_acid_type = "polyadenylated mRNA",
-                                     #download_method = "experiments",
-                                     download_method ="gene_silencing_series") {
+                                   results_path,
+                                   dependencies_path,
+                                   required_cell_lines = c("HepG2", "K562"),
+                                   valid_genome_annotation = "V29",
+                                   valid_file_format = "bam",
+                                   valid_output_type = "alignments",
+                                   valid_nucleic_acid_type = "polyadenylated mRNA",
+                                   #download_method = "experiments",
+                                   download_method ="gene_silencing_series") {
   
   
   
   
   ## Valid or required values ----
-
-
+  
+  
   #valid_file_format <- "alignments"
   #valid_output_type <- "alignments"
   # valid_output_type <- c("minus strand signal of unique reads",
@@ -34,7 +54,7 @@ ENCODEDownloadMetadata <- function(experiment_type,
   output_search <- file.path(results_path, paste0("all_", experiment_type, "_experiments.tsv"))
   output_metadata <- file.path(results_path, paste0("metadata_", experiment_type, "_samples.tsv"))
   
-         
+  
   
   
   ### LOAD RBP NAMES
@@ -65,13 +85,13 @@ ENCODEDownloadMetadata <- function(experiment_type,
   
   
   ## Query the ENCODE API to download a list of experiments in json format ---
-  response_data <- getUrlResponse(URL, output_file = output_json)
+  response_data <- GetUrlResponse(URL, output_file = output_json)
   
   
   
   
   ## Summarize the list of experiments from ENCODE search --------------------
-  summary_df <- generateSummary(response_data, 
+  summary_df <- GenerateSummary(response_data, 
                                 valid_target_genes = NULL,
                                 output_file = output_search)
   
@@ -80,7 +100,7 @@ ENCODEDownloadMetadata <- function(experiment_type,
   
   
   ## Extract the metadata ----
-  metadata_df <- generateMetadata(summary_df, 
+  metadata_df <- GenerateMetadata(summary_df, 
                                   download_method = download_method,
                                   required_cell_lines = required_cell_lines,
                                   valid_file_format = valid_file_format,
@@ -95,7 +115,7 @@ ENCODEDownloadMetadata <- function(experiment_type,
   if ( str_detect(string = metadata_df[1,]$assay, pattern = "shRNA", negate = F) ) {
     
     
-    metadata_df <- addTargetGeneCategory(metadata_df = output_metadata,
+    metadata_df <- AddTargetGeneCategory(metadata_df = output_metadata,
                                          input_Category = file.path(dependencies_path, "RBPs_subgroups.xlsx"),
                                          input_NMD = file.path(dependencies_path, "NMD.txt"),
                                          output_file = output_metadata)
@@ -109,17 +129,10 @@ ENCODEDownloadMetadata <- function(experiment_type,
   
 }
 
-# ## Files ----
-# main_path <- file.path(here::here())
-# if(!dir.exists(main_path)) dir.create(main_path)
-  
 
 
+## HELPER FUNCTIONS ----------------------------------------------------------------------
 
-
-######################################################
-## FUNCTIONS
-######################################################
 
 #' Extract API response
 #'
@@ -131,7 +144,7 @@ ENCODEDownloadMetadata <- function(experiment_type,
 #'
 #' @return A list object containing the json downloaded from the ENCODE portal.
 #' @export
-getUrlResponse <- function(url, output_file = NULL) {
+GetUrlResponse <- function(url, output_file = NULL) {
   response <- httr::GET(url)
   r <- httr::content(response, as = "text", encoding = "UTF-8")
   
@@ -144,12 +157,12 @@ getUrlResponse <- function(url, output_file = NULL) {
 
 #' Generates a summary of the ENCODE experiment search
 #'
-#' From the generated list object built in [getUrlResponse()], it reads every
+#' From the generated list object built in [GetUrlResponse()], it reads every
 #' experiment found and extract their experiment ID, Gene Silencing Series (gss)
 #' ID and cell line. All this information is summarized in a dataframe, where
 #' every row is an experiment.
 #'
-#' @param response_data List object build from [getUrlResponse()] and a search
+#' @param response_data List object build from [GetUrlResponse()] and a search
 #'   URL.
 #' @param output_file (Optional) Path to where the json downloaded file will be
 #'   stored.
@@ -157,7 +170,7 @@ getUrlResponse <- function(url, output_file = NULL) {
 #' @return Data.frame containing a summary of every experiment found in the
 #'   ENCODE search.
 #' @export
-generateSummary <- function(response_data,
+GenerateSummary <- function(response_data,
                             valid_target_genes = c(),
                             output_file = NULL) {
   summary_df <- tibble()
@@ -297,7 +310,7 @@ generateSummary <- function(response_data,
 #' @return Data.frame where every row is an ENCODE sample and the columns
 #'   contain their metadata.
 #' @export
-generateMetadata <- function(summary_df,
+GenerateMetadata <- function(summary_df,
                              download_method,
                              required_cell_lines = NULL, 
                              valid_nucleic_acid_type = "polyadenylated mRNA",
@@ -375,7 +388,7 @@ generateMetadata <- function(summary_df,
     if (tg_df %>% nrow == 0) {
       next;
     }
-     
+    
     ## Add final information and sort the columns
     tg_df <- tg_df %>%
       dplyr::mutate(target_gene = iter_target_gene, .before = cell_line) %>%
@@ -410,7 +423,7 @@ generateMetadata <- function(summary_df,
 #' Extract metadata from the Gene Silencing Series (gss)
 #'
 #' @param summary_tg_df Local target gene information from the summary
-#'   data.frame generated with [generateSummary()].
+#'   data.frame generated with [GenerateSummary()].
 #' @param valid_nucleic_acid_type (Optional) Required nucleic acid type of the
 #'   experiment. Defaults to "polyadenylated mRNA".
 #' @param valid_file_format (Optional) Required output file format of the
@@ -439,7 +452,7 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
     logger::log_info("\t Starting Gene Silencing Series ", gss_id, " (cell line = ", gss_cell_line, "):")
     
     ## Get the API response for the gene silencing series
-    response_gss <- getUrlResponse(paste0("https://www.encodeproject.org/gene-silencing-series/", gss_id, "?format=json"))
+    response_gss <- GetUrlResponse(paste0("https://www.encodeproject.org/gene-silencing-series/", gss_id, "?format=json"))
     
     ## Information about the case and control samples
     gss_experiments <- response_gss$related_datasets
@@ -450,15 +463,15 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
       experiment <- gss_experiments[iter_experiment, ]
       
       experiment_id <- experiment$accession
-      experiment_type <- getExperimentType(experiment, gss$target_gene, gss_cell_line) 
+      experiment_type <- GetExperimentType(experiment, gss$target_gene, gss_cell_line) 
       
       logger::log_info("\t\t Starting experiment ", experiment_id, " (type = ", experiment_type, ").")
       
       ## Requirements metadata
-      experiment_additional_info <- getAdditionalInformation(experiment)
+      experiment_additional_info <- GetAdditionalInformation(experiment)
       
       ## Main metadata
-      experiment_sample_files <- getSampleFiles(files = experiment$files[[1]],
+      experiment_sample_files <- GetSampleFiles(files = experiment$files[[1]],
                                                 valid_file_format = valid_file_format, 
                                                 valid_output_type = valid_output_type, valid_genome_annotation)
       
@@ -470,12 +483,12 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
         return(cbind(experiment_sample_files, experiment_additional_info))
       
       ## Other metadata
-      experiment_rin <- getRin(experiment$replicates[[1]])
-      experiment_read_depth <- getReadDepth(experiment$analyses[[1]], valid_genome_annotation)
-      experiment_donor_info <- getDonorInfo(experiment$replicates[[1]])
-      experiment_documents <- getDocumentFiles(experiment$replicates[[1]], gss$target_gene, experiment_type)
+      experiment_rin <- GetRin(experiment$replicates[[1]])
+      experiment_read_depth <- GetReadDepth(experiment$analyses[[1]], valid_genome_annotation)
+      experiment_donor_info <- GetDonorInfo(experiment$replicates[[1]])
+      experiment_documents <- GetDocumentFiles(experiment$replicates[[1]], gss$target_gene, experiment_type)
       experiment_doi <- experiment$doi
-      experiment_gene_quantifications <- getGeneQuantificationFiles(experiment$files[[1]])
+      experiment_gene_quantifications <- GetGeneQuantificationFiles(experiment$files[[1]])
       
       ## Combine all information
       experiment_combined <- experiment_sample_files %>% 
@@ -495,8 +508,8 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
     
     if (nrow(gss_df) > 0)
       gss_df <- gss_df %>%
-        dplyr::mutate(cell_line = gss_cell_line, 
-                      gene_silencing_series = gss_id, .before = sample_id)
+      dplyr::mutate(cell_line = gss_cell_line, 
+                    gene_silencing_series = gss_id, .before = sample_id)
   }
   
   return(tg_df)
@@ -512,7 +525,7 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
 #'
 #' @return The experiment type (e.g. control/case)
 #' @export
-getExperimentType <- function(related_dataset,
+GetExperimentType <- function(related_dataset,
                               target_gene,
                               gss_cell_line){
   if(!"control_type" %in% names(related_dataset)){
@@ -534,7 +547,7 @@ getExperimentType <- function(related_dataset,
 #'   cellosaurus, the nucleic acid type, the extraction method, the
 #'   fragmentation method, the size selection method and the strand specificity.
 #' @export
-getAdditionalInformation <- function(related_dataset){
+GetAdditionalInformation <- function(related_dataset){
   
   sample_lab <- related_dataset$lab.title
   
@@ -622,7 +635,7 @@ getAdditionalInformation <- function(related_dataset){
 #' @return Data.frame with the RIN information for each experiment's isogenic
 #'   replicates.
 #' @export
-getRin <- function(replicates) {
+GetRin <- function(replicates) {
   if(!"library.rna_integrity_number" %in% names(replicates)){
     logger::log_warn("\t\t\t No RIN found. Defaulted to NA.")
     rin_info <- replicates %>% 
@@ -646,7 +659,7 @@ getRin <- function(replicates) {
 #'
 #' @return Data.frame containing the read depth for each isogenic replicate.
 #' @export
-getReadDepth <- function(analyses,
+GetReadDepth <- function(analyses,
                          valid_genome_annotation = "V29") {
   read_depth_info <- analyses %>% 
     dplyr::filter(genome_annotation == valid_genome_annotation) %>%
@@ -666,7 +679,7 @@ getReadDepth <- function(analyses,
 #'
 #' @return Data.frame containing information about the sample donor.
 #' @export
-getDonorInfo <- function(replicates) {
+GetDonorInfo <- function(replicates) {
   donor_info <- replicates %>% 
     dplyr::select(biological_replicate_number, library.biosample.sex, library.biosample.age, library.biosample.life_stage)
   names(donor_info) <- c("bio_rep", "sex", "age", "life_stage")
@@ -683,7 +696,7 @@ getDonorInfo <- function(replicates) {
 #'
 #' @return Data.frame containing the information about the biosample and characterization documents.
 #' @export
-getDocumentFiles <- function(replicates, 
+GetDocumentFiles <- function(replicates, 
                              target_gene, 
                              experiment_type){
   if(experiment_type == "case"){
@@ -726,7 +739,7 @@ getDocumentFiles <- function(replicates,
 #' @return Data.frame containing the information of the gene quantifications
 #'   files found within the experiment.
 #' @export
-getGeneQuantificationFiles <- function(files,
+GetGeneQuantificationFiles <- function(files,
                                        valid_file_format = "tsv",
                                        valid_output_type = "gene quantifications",
                                        valid_genome_annotation = "V29") {
@@ -747,7 +760,7 @@ getGeneQuantificationFiles <- function(files,
 #' Extract metadata from the case/control experiments
 #'
 #' @param summary_tg_df Local target gene information from the summary
-#'   data.frame generated with [generateSummary()].
+#'   data.frame generated with [GenerateSummary()].
 #' @param valid_nucleic_acid_type (Optional) Required nucleic acid type of the
 #'   experiment. Defaults to "polyadenylated mRNA".
 #' @param valid_file_format (Optional) Required output file format of the
@@ -778,7 +791,7 @@ LoopExperiments <- function(summary_tg_df,
     logger::log_info("\t Starting Experiment ", exp_id, " (cell line = ", exp_cell_line, "):")
     
     ## Get the API response for the experiment
-    response_case <- getUrlResponse(paste0("https://www.encodeproject.org/experiment/", exp_id, "?format=json"))
+    response_case <- GetUrlResponse(paste0("https://www.encodeproject.org/experiment/", exp_id, "?format=json"))
     control_id = response_case$possible_controls$accession
     
     if (is.null(control_id)) {
@@ -786,7 +799,7 @@ LoopExperiments <- function(summary_tg_df,
     }
     
     if (!is.null(response_case)) {
-      case_df <- extractMetadataExperiment(experiment = response_case, 
+      case_df <- ExtractMetadataExperiment(experiment = response_case, 
                                            experiment_type = "case", 
                                            valid_nucleic_acid_type, 
                                            valid_file_format,
@@ -796,8 +809,8 @@ LoopExperiments <- function(summary_tg_df,
     }
     if (!is.null(control_id)) {
       
-      response_control = getUrlResponse(paste0("https://www.encodeproject.org/experiment/", control_id, "?format=json"))
-      control_df <- extractMetadataExperiment(response_control, 
+      response_control = GetUrlResponse(paste0("https://www.encodeproject.org/experiment/", control_id, "?format=json"))
+      control_df <- ExtractMetadataExperiment(response_control, 
                                               "control", 
                                               valid_nucleic_acid_type, 
                                               valid_file_format,
@@ -834,7 +847,7 @@ LoopExperiments <- function(summary_tg_df,
 #'
 #' @return Data.frame containing the metadata for a particular experiment.
 #' @export 
-extractMetadataExperiment <- function(experiment, 
+ExtractMetadataExperiment <- function(experiment, 
                                       experiment_type,
                                       valid_nucleic_acid_type,
                                       valid_file_format,
@@ -846,22 +859,22 @@ extractMetadataExperiment <- function(experiment,
   logger::log_info("\t\t Starting experiment ", experiment_id, " (type = ", experiment_type, ").")
   
   ## Requirements metadata
-  experiment_additional_info <- getAdditionalInformation(related_dataset = experiment)
+  experiment_additional_info <- GetAdditionalInformation(related_dataset = experiment)
   
   ## Main metadata
-  experiment_sample_files <- getSampleFiles(files = experiment$files[[1]], 
+  experiment_sample_files <- GetSampleFiles(files = experiment$files[[1]], 
                                             valid_file_format, valid_output_type, valid_genome_annotation)
   
   if(experiment_additional_info$nucleic_acid_type != valid_nucleic_acid_type) 
     return(cbind(experiment_sample_files, experiment_additional_info))
   
   ## Other metadata
-  experiment_rin <- getRin(experiment$replicates)
-  experiment_read_depth <- getReadDepth(experiment$analyses, valid_genome_annotation)
-  experiment_donor_info <- getDonorInfo(experiment$replicates)
-  experiment_documents <- getDocumentFiles(experiment$replicates, gss$target_gene, experiment_type)
+  experiment_rin <- GetRin(experiment$replicates)
+  experiment_read_depth <- GetReadDepth(experiment$analyses, valid_genome_annotation)
+  experiment_donor_info <- GetDonorInfo(experiment$replicates)
+  experiment_documents <- GetDocumentFiles(experiment$replicates, gss$target_gene, experiment_type)
   experiment_doi <- experiment$doi
-  experiment_gene_quantifications <- getGeneQuantificationFiles(experiment$files)
+  experiment_gene_quantifications <- GetGeneQuantificationFiles(experiment$files)
   
   ## Combine all information
   experiment_combined <- experiment_sample_files %>% 
@@ -891,7 +904,7 @@ extractMetadataExperiment <- function(experiment,
 #' @return A data.frame with the metadata about the sample files, biological
 #'   replicate, output type, etc.
 #' @export
-getSampleFiles <- function(files,
+GetSampleFiles <- function(files,
                            valid_file_format = "bam",
                            valid_output_type = "alignments",
                            valid_genome_annotation = "V29") {
@@ -929,7 +942,7 @@ getSampleFiles <- function(files,
 #' @return Data.frame where every row is an ENCODE sample and the columns
 #'   contain their metadata, including their functional category.
 #' @export
-addTargetGeneCategory <- function(metadata_df,
+AddTargetGeneCategory <- function(metadata_df,
                                   input_Category = "",
                                   input_NMD = "",
                                   output_file = ""){
@@ -937,7 +950,7 @@ addTargetGeneCategory <- function(metadata_df,
   
   metadata_df <- readr::read_delim(file = metadata_df, delim = "\t", show_col_types = F)
   target_RBPs_metadata <- xlsx::read.xlsx(file = input_Category, sheetIndex = 1) %>% drop_na()
-    
+  
   
   metadata_df <- metadata_df %>% 
     dplyr::left_join(target_RBPs_metadata,# %>% 
@@ -964,3 +977,5 @@ addTargetGeneCategory <- function(metadata_df,
   
   return(metadata_df)
 }
+
+## 28

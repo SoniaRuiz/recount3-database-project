@@ -21,8 +21,7 @@ GetAllAnnotatedSplitReads <- function(recount3.project.IDs,
   ## These are all split reads from all tissues
   ## obtained from 'USE ME' SAMPLES and samples with more than 6 RIN
   #############################################
-  
-  ## The sample filter in IntroVerse corresponded to 
+
   
   doParallel::registerDoParallel(num.cores)
   
@@ -79,7 +78,7 @@ GetAllAnnotatedSplitReads <- function(recount3.project.IDs,
   }
   
   
-  logger::log_info("saving 'all_annotated_split_reads' for the database!")
+  logger::log_info("\t Saving 'all_annotated_split_reads' for the database!")
   
   all_split_reads_details_all_sample_clusters <- all_split_reads_details_all_sample_clusters %>%
     distinct(junID, .keep_all = T)

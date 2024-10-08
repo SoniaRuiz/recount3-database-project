@@ -1,69 +1,73 @@
-
-# 1. Load libraries and variables ----
-## Required libraries ----
-shhh(library(doSNOW))
-shhh(library(reticulate))
-
-
-## Load python interface ----
-virtualenv_path <- "~/python_env/"
-use_virtualenv(virtualenv_path)
-py_available()
-py_install("pytesseract") 
-py_install("tesseract")
-py_install("fitz") 
-py_install("pymupdf")
-py_install("frontend") 
-
-pytesseract <- import("pytesseract")
-PIL <- import("PIL")
+##############################################################
+## CODE Adapted from:
+## https://github.com/guillermo1996/ENCODE_Metadata_Extraction
+##############################################################
 
 
+library(doSNOW)
+library(reticulate)
 
 
-
+#' Title
+#' Downloads from the ENCODE platform the WB details regarding the knockdown efficiency of each RBP
+#' @param metadata 
+#' @param results.path 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 DownloadKnockdownEfficiencyWB <- function(metadata,
                                           results.path) {
   
-  ## Define the algorithm variables ----
-  main_path <- file.path(results.path, "/WesternBlotting_PCR/RBPs/")
-  dir.create(main_path, recursive = T, showWarnings = F)
   
-  ## Input Files ----
-  metadata_WB_output <- paste0(main_path, "metadata_WB_kEff.tsv")
-  metadata_PCR_output <- paste0(main_path, "metadata_PCR_kEff.tsv")
+  ## Create and load python environment -------------------------
+  
+  virtualenv <- "ENCODE_python_env"
+  reticulate::virtualenv_create(virtualenv)
+  reticulate::use_virtualenv(virtualenv)
+  
+  py_available()
+  py_install("pytesseract") 
+  py_install("tesseract")
+  py_install("pymupdf")
+  py_install("fitz") 
+  py_install("frontend") 
+  
+  pytesseract <- import("pytesseract")
+  PIL <- import("PIL")
+  
+  
+  ## Set Variables ----------------------------------------------
+
+  results_path <- file.path(results.path, "/WesternBlotting_PCR/RBPs/")
+  dir.create(results_path, recursive = T, showWarnings = F)
+  metadata_WB_output <- file.path(results_path, "metadata_WB_kEff.tsv")
+  metadata_PCR_output <- file.path(results_path, "metadata_PCR_kEff.tsv")
   
   download_cores = 16
   overwrite_results = T
   resize_perc = 0.25
   min_width = 600
   
-  # 2. Pipeline ----
-  ## Generate the variables ----
-  #metadata <- readr::read_delim(metadata_path, show_col_types = F) %>% as_tibble()
-  
-  target_RBPs <- metadata %>%
-    dplyr::filter(if_any(c(Splicing_regulation, Spliceosome, Exon_junction_complex, NMD, Novel_RBP), ~ . != 0)) %>%
-    dplyr::filter(!is.na(document)) %>%
-    dplyr::pull(target_gene) %>%
-    unique()
+  target_RBPs <- metadata %>% dplyr::pull(target_gene) %>%  unique()
   
   metadata_filtered <- metadata %>%
-    dplyr::filter(target_gene %in% target_RBPs, !is.na(document)) %>%
     dplyr::select(target_gene, cell_line, experiment_id, biosample, bio_rep, document, biosample_alias) %>%
-    dplyr::mutate(path = paste0(main_path, target_gene, "/", experiment_id, "/", bio_rep, "/"))
+    dplyr::mutate(path = paste0(results_path, target_gene, "/", experiment_id, "/", bio_rep, "/"))
   
-  ## Create the directories ----
-  createDirectories(target_RBPs, metadata_filtered)
   
-  ## Download the files and add a column with their path ----
-  metadata_documents <- downloadCharacterizationDocuments(metadata_filtered, 
-                                                          download_cores, 
-                                                          overwrite_results,
-                                                          silent = F)
+  # 2. Pipeline --------------------------------------------------
   
-  ## Check the existence of the files ----
+  ## Create the directories
+  CreateDirectories(target_RBPs, metadata_filtered)
+  
+  ## Download the files and add a column with their path
+  metadata_documents <- DownloadCharacterizationDocuments(metadata_filtered, download_cores, overwrite_results, silent = F)
+  
+  ## Check the existence of the files
   for(row_index in seq(nrow(metadata_documents))){
+    
     row = metadata_documents[row_index, ]
     file_path <- row$file_path
     path <- row$path
@@ -71,12 +75,11 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
     if(!file.exists(file_path) || file.info(file_path)$size < 10){
       logger::log_warn("Error for row ", row_index, "! File path ", path)
     }
+    
   }
   
-  ## Extract the images of all files ----
-  metadata_images <- extractImages(metadata_documents, 
-                                   overwrite_results = overwrite_results,
-                                   virtualenv_path)
+  ## Extract the images of all files
+  metadata_images <- ExtractImages(metadata_documents, overwrite_results = overwrite_results, virtualenv_path)
   
   ## Extract text from images ----
   ## This cannot be separated into an external function.
@@ -93,7 +96,7 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
     
     image <- PIL$Image$open(image_path)
     image_cropped <- image$crop(list(0, image$height*0.9, 0.8*image$width, image$height))
-    image_small <- resizeImage(image, resize_perc, min_width)
+    image_small <- ResizeImage(image, resize_perc, min_width)
     
     image_small$save(paste0(path, "cropped_image.png"))
     text_df <- pytesseract$image_to_string(image = image_small) %>%
@@ -155,15 +158,15 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   }
   
   ## Write the knockdown efficiency table to disk ----
-  writeEfficiencyTable(metadata_kEff, "WB", metadata_WB_output)
-  writeEfficiencyTable(metadata_kEff, "PCR", metadata_PCR_output)
+  WriteEfficiencyTable(metadata_kEff, "WB", metadata_WB_output)
+  WriteEfficiencyTable(metadata_kEff, "PCR", metadata_PCR_output)
 }
 
 
 
-##################################################
-## HELPER FUNCTIONS
-##################################################
+
+## HELPER FUNCTIONS -------------------------------------------------------------------------------------
+
 
 #' Creates the required subdirectories
 #'
@@ -174,7 +177,7 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
 #'
 #' @return
 #' @export
-createDirectories <- function(target_RBPs, 
+CreateDirectories <- function(target_RBPs, 
                               metadata_filtered){
   for(i in seq(length(target_RBPs))){
     target_RBP <- target_RBPs[i]
@@ -205,7 +208,7 @@ createDirectories <- function(target_RBPs,
 #'
 #' @return Data.frame with the information of the downloaded files.
 #' @export
-downloadCharacterizationDocuments <- function(metadata_filtered,
+DownloadCharacterizationDocuments <- function(metadata_filtered,
                                               download_cores = 1,
                                               overwrite_results = FALSE,
                                               silent = F){
@@ -272,7 +275,7 @@ downloadCharacterizationDocuments <- function(metadata_filtered,
 #'
 #' @return Data.frame with the information of the extracted images.
 #' @export
-extractImages <- function(metadata_documents,
+ExtractImages <- function(metadata_documents,
                           overwrite_results = FALSE,
                           virtualenv_path){
   metadata_images <- foreach(row_index = seq(nrow(metadata_documents))) %do%{
@@ -327,7 +330,7 @@ extractImages <- function(metadata_documents,
 #'
 #' @return PIL image object.
 #' @export
-resizeImage <- function(image, 
+ResizeImage <- function(image, 
                         resize_perc = 0.25,
                         min_width = 600){
   if(image$width > 600){
@@ -353,7 +356,7 @@ resizeImage <- function(image,
 #' @return Data.frame with the summarized knockdown efficiencies reported by
 #'   ENCODE with either qRT-PCR or Western blotting.
 #' @export
-writeEfficiencyTable <- function(metadata_kEff,
+WriteEfficiencyTable <- function(metadata_kEff,
                                  method = "WB",
                                  output_file = ""){
   if(method == "WB"){
@@ -383,3 +386,4 @@ writeEfficiencyTable <- function(metadata_kEff,
   return(metadata_kEff_output)
 }
 
+## 30

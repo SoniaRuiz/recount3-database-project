@@ -7,15 +7,17 @@
 #' @export
 #'
 #' @examples
-SqlRemoveTables <- function(database.path, all) {
+SqlRemoveTables <- function(database.path, all, con = NULL) {
   
-  con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database.path)
+  if (is.null(con)) {
+    con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database.path)
+  }
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=0")
+  
   tables <- dbListTables(con)
   tables %>% print()
   
   for (table in tables) {
-    #if (str_detect(table %>% tolower(), pattern = "kidney")) {
     
     if (!all) {
       
@@ -34,4 +36,3 @@ SqlRemoveTables <- function(database.path, all) {
   
   DBI::dbDisconnect(conn = con)
 }
-#dbRemoveTable(conn = con, "PD_SRP058181_misspliced")

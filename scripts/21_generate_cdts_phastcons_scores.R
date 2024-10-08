@@ -1,3 +1,4 @@
+library(rtracklayer)
 
 #' Title
 #' Calculates the CDTS and PhastCons20 mean scores of the sequences overlapping the /+35bp sequence at the donor site of the intron 

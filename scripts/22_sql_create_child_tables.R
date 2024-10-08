@@ -1,6 +1,8 @@
 
 #' Title
-#' Creates the child tables for each of the recount3 ID projects indicated
+#' Creates two 'child' SQLITE tables per sample cluster to store i) the annotated introns that do not have evidence for mis-splicing activity 
+#' (never-misspliced table) and the ii) annotated introns with evidence of mis-splicing at their donor or acceptor splice sites.
+#' These are referred to as 'child' tables because they inherit information from the 'intron' and 'novel' master tables
 #' @param database.path Local path to the .sqlite database
 #' @param recount3.project.IDs Vector with the ID of the recount3 projects to work with
 #' @param database.folder Local path to the folder that contains the database
@@ -620,6 +622,178 @@ SqlCreateChildTables <- function(database.path,
   }
 }
 
+
+#' Title
+#' Creates one child SQLITE table per sample cluster to store the 'novel combination' splicing events.
+#' This table is referred to as 'child' table because it inherit information from the 'combo' master table
+#' @return
+#' @export
+#'
+#' @examples
+SqlCreateChildTableCombo <-  function(con = NULL) {
+  
+  ## CONNECT THE DATABASE
+  if (is.null(con)) {
+    con <- dbConnect(RSQLite::SQLite(), database.path)
+  }
+  
+  DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
+  
+  tables <- DBI::dbListTables(conn = con)
+  
+  ## GET INFO FROM COMBO MASTER TABLE
+  query <- paste0("SELECT ref_junID, ref_coordinates, transcript_id FROM 'combo'")
+  master_combo <- dbGetQuery(con, query) %>% as_tibble()
+  master_combo %>% nrow()
+  
+  
+  for ( project_id in recount3.project.IDs ) { 
+    
+    # project_id <- recount3.project.IDs[1]
+    
+    logger::log_info(" --> Working with '", project_id, "' ...")
+    results_folder_local <- file.path(results.folder, project_id)
+    
+    clusters <- df_metadata %>% dplyr::filter(SRA_project == project_id) %>% distinct(cluster) %>% pull()
+    
+    for (cluster_id in clusters) { 
+      
+      # cluster_id <- clusters[1]
+      
+      logger::log_info(project_id, " --> ", cluster_id)
+      
+      ###############################
+      ## PREPARE DATA
+      ###############################
+      
+      if ( file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
+           file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds")) ) {  
+        
+        ## Load split read counts
+        split_read_counts <- readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds"))
+        
+        logger::log_info(" --> ", split_read_counts %>% nrow(), " split read counts loaded from '", cluster_id, "' cluster!")
+        
+        ## Load samples
+        samples <- readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+        
+        if ( !identical(names(split_read_counts)[-1] %>% sort(), samples %>% sort()) ) {
+          stop("The number of samples used does not correspond to the number of columns in the 'split_read_counts' object!")
+        }
+        
+        ## Add coverage detected for the introns in the current tissue
+        split_read_counts_w_coverage <- GenerateCoverage(split.read.counts = split_read_counts,
+                                                         samples = samples,
+                                                         junIDs = split_read_counts$junID) %>%
+          dplyr::rename(ref_n_individuals = n_individuals, ref_sum_counts = sum_counts) %>% 
+          rowwise() %>%
+          mutate(junID = ifelse(str_detect(string = junID, pattern = "\\*"), str_replace(string = junID, pattern = "\\*", strand ),
+                                junID)) 
+        
+        split_read_counts_w_coverage %>% head()
+        
+        ## Merge counts and split reads from novel combos
+        split_read_counts_all_details <- split_read_counts_w_coverage %>%
+          inner_join(y = master_combo, by = c("junID" = "ref_coordinates"))
+        
+        #####################################
+        ## AD GENE TPM
+        #####################################
+        
+        if ( file.exists( paste0(results.folder, "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds")) ) {
+          
+          logger::log_info(" --> calculating TPM values ... ")
+          
+          tpm <- readRDS(file = paste0(results.folder,  "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
+            dplyr::select(gene_id, all_of(samples))
+          
+          tpm <- tpm  %>%
+            dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
+            dplyr::select(gene_id, tpm_median) 
+          
+          ## In case there are any duplicates, take the genes with the maximum tpms
+          tpm <- tpm %>% 
+            distinct(gene_id, .keep_all = T) %>%
+            group_by(gene_id) %>% 
+            summarize_all(max) %>%
+            ungroup()
+          
+          tpm %>% as_tibble()
+          
+          
+          tpm_tidy <- tpm %>%
+            inner_join(y = master_gene %>% as_tibble(),
+                       by = c("gene_id" = "gene_id")) %>%
+            inner_join(y = master_transcript %>% as_tibble(),
+                       by = c("id" = "gene_id"),
+                       multiple = "all") %>%
+            dplyr::select(transcript_id = id.y, 
+                          tpm_median)
+          
+          split_read_counts_all_details_tidy <- split_read_counts_all_details_tidy %>%
+            left_join(y = tpm_tidy,
+                      by = c("transcript_id" = "transcript_id")) %>% 
+            dplyr::rename(gene_tpm = tpm_median)
+          
+        }
+        
+        #########################################################
+        ## CREATE AND POPULATE CHILD 'NOVEL COMBO' TABLE
+        #########################################################
+        
+        logger::log_info( " --> creating 'novel combo' table ... ")
+        
+        # dbRemoveTable(conn = con, paste0(cluster_id, "_", project_id))
+        query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster_id, "_", project_id, "_combo"), "'", 
+                        "(ref_junID INTEGER NOT NULL,
+                          ref_n_individuals INTEGER NOT NULL,
+                          ref_sum_counts INTEGER NOT NULL,
+                          gene_tpm DOUBLE, 
+                          transcript_id INTEGER NOT NULL, 
+                          FOREIGN KEY (ref_junID) REFERENCES combo (ref_junID),
+                          FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
+        
+        ## Connect the database
+        con <- dbConnect(RSQLite::SQLite(), database.path)
+        DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
+        
+        ## Create the NOVEL COMBO table
+        res <- DBI::dbSendQuery(conn = con, statement = query)
+        DBI::dbClearResult(res)
+        
+        
+        ## POPULATE THE TABLE
+        split_read_counts_all_details_final <- split_read_counts_all_details %>%
+          dplyr::select(-junID) %>%
+          mutate(transcript_id = transcript_id %>% as.integer()) %>%
+          dplyr::relocate(ref_junID)
+        
+        summary(split_read_counts_all_details_final)
+        
+        DBI::dbAppendTable(conn = con, name = paste0(cluster_id, "_", project_id, "_combo"), 
+                           value = split_read_counts_all_details_final )
+        
+        
+        ## Disconnect the database
+        DBI::dbDisconnect(conn = con)
+        
+        
+        logger::log_info("'", cluster_id, "_", project_id, "_combo' table populated!")
+        
+        
+        
+      } else {
+        DBI::dbDisconnect(conn = con) 
+        logger::log_info("Dependency files do not exist! '", cluster_id, "_", project_id, "'!")
+      }
+    }
+    gc()
+  }
+}
+
+
+
+## HELPER FUNCTIONS ------------------------------------------------------------------------------------
 
 add_coverage_to_introns <- function(df_cluster_distances, split_read_counts, samples) {
   

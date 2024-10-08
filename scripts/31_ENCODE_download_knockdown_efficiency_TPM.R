@@ -1,22 +1,36 @@
-# source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/ENCODE_SR/ENCODE_Metadata_Extraction/Knockdown_Efficiency/TPM/KnockdownEfficiency_TPM_Script.R")
+##############################################################
+## CODE Adapted from:
+## https://github.com/guillermo1996/ENCODE_Metadata_Extraction
+##############################################################
 
-# 1. Load libraries and variables ----
-## Required libraries ----
-shhh <- suppressPackageStartupMessages
-shhh(library(biomaRt))
-shhh(library(doSNOW))
+library(biomaRt)
+library(doSNOW)
 
 
+#' Title
+#' Downloads the gene TPM values from each ENCODE shRNA RBP knockdown experiment studied
+#' @param metadata 
+#' @param results.path 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 DownloadKnockdownEfficiencyTPM <- function(metadata,
                                            results.path) {
   
+  
+  ## Set Variables ----------------------------------------------
+  
+  results_path <- file.path(results.path, "/TPM/RBPs/")
+  dir.create(results_path, recursive = T, showWarnings = F)
   
   main_path <- file.path(results.path, "/TPM/RBPs/")
   dir.create(main_path, recursive = T, showWarnings = F)
   
   
   ## Input Files ----
-
+  
   metadata_path <- paste0(main_path, "metadata_samples.tsv")
   metadata_TPM_output <- paste0(main_path, "metadata_TPM_kEff.tsv")
   
@@ -73,9 +87,9 @@ DownloadKnockdownEfficiencyTPM <- function(metadata,
 
 
 
-#############################################################
-## HELPER FUNCTIONS
-#############################################################
+
+## HELPER FUNCTIONS ----------------------------------------------------------------------
+
 
 #' Creates the required subdirectories
 #'
@@ -322,3 +336,5 @@ generateKnockdownEfficiency <- function(metadata_TPM,
   
   return(metadata_kEff)
 }
+
+## 31
