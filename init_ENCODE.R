@@ -119,7 +119,8 @@ if (download_bams) {
   #DownloadKnockdownEfficiencyTPM(metadata = metadata_RBPs, results.path = args$results_folder)
   
   ## 4. Download .bam files
-  ENCODEDownloadBams(metadata = metadata_RBPs, results.path = args$results_folder,
+  ENCODEDownloadBams(metadata = metadata_RBPs, 
+                     results.path = args$results_folder,
                      regtools.path = "/home/grocamora/tools/regtools/build/",
                      samtools.path = "/home/grocamora/tools/samtools/bin/")
 }

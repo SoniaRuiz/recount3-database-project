@@ -31,7 +31,7 @@ ENCODEDownloadBams <- function(metadata,
   
   for (target_RBP in target_RBPs) {
     
-    # target_RBP <- target_RBPs[6]
+    # target_RBP <- target_RBPs[7]
     logger::log_info("\t Downloading target RBP: ", target_RBP)
     
     ## Target RBP variables
@@ -39,10 +39,10 @@ ENCODEDownloadBams <- function(metadata,
     RBP_path <- file.path(results.path, target_RBP, "/")
     RBP_clusters <- RBP_metadata %>% dplyr::pull(experiment_type) %>% unique()
     
-    ## If the junctions files are already found
-    if(nrow(CheckDownloadedFiles(RBP.metadata = RBP_metadata, RBP.path = RBP_path)) == 0) {
+    ## If the junctions from all sample experiments have already been extracted, move on to the next RBP
+    if (nrow(CheckDownloadedFiles(RBP.metadata = RBP_metadata, RBP.path = RBP_path)) == nrow(RBP_metadata)) {
       logger::log_info("\t\t Ignoring download and extraction. All junctions already extracted!")
-      next
+      next;
     }
     
     ## Create the subfolders
@@ -201,7 +201,7 @@ DownloadExtractBamFiles <- function(RBP.metadata,
   logger::log_info("\t Starting the download and extraction process.")
   
   ## Only download BAM files for the samples not yet downloaded and junction extracted
-  RBP.metadata = CheckDownloadedFiles(RBP.metadata, RBP.path)
+  RBP.metadata <- CheckFilesToDownload(RBP.metadata, RBP.path)
   
   ## Multiprocessing generation. Add argument "output.file" to
   ## parallel::makeCluster() if you want to output information about the parallel
@@ -290,6 +290,24 @@ CheckDownloadedFiles <- function(RBP.metadata,
     paste0(RBP.path, x["experiment_type"], "/", x["sample_id"], ".bam.sort.s0.junc")
   })
   
-  return(RBP.metadata[-which(file.exists(file_names)),])
+  return(RBP.metadata[which(file.exists(file_names)),])
+}
+
+#' Checks BAM files to download from the ENCODE platform
+#'
+#' @param RBP.metadata Dataframe containing all the metadata for the RBPs/NMDs.
+#' @param RBP.path Path to the folder where the generated files should be
+#'   stored.
+#'
+#' @return Whether the JUNC files for the input metadata exists or not.
+#' @export
+CheckFilesToDownload <- function(RBP.metadata,
+                                 RBP.path){
+  
+  file_names <- apply(RBP.metadata, 1, function(x) {
+    paste0(RBP.path, x["experiment_type"], "/", x["sample_id"], ".bam.sort.s0.junc")
+  })
+  
+  return(RBP.metadata[which(!file.exists(file_names)),])
 }
 

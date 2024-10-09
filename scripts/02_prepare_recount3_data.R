@@ -13,13 +13,13 @@
 #' @export
 #'
 #' @examples
-prepare_recount3_data <- function(recount3.project.IDs, 
-                                  data.source,
-                                  results.folder,
-                                  subsampling = F,
-                                  levelqc1.folder,
-                                  supporting.reads,
-                                  num.cores) {
+PrepareRecount3Data <- function(recount3.project.IDs, 
+                                data.source,
+                                results.folder,
+                                levelqc1.folder,
+                                supporting.reads,
+                                num.cores,
+                                subsampling = F) {
   
   
   

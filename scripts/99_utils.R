@@ -56,14 +56,14 @@ RemoveEncodeBlacklistRegions <- function(GRdata, blacklist.path) {
 #' The different versions can be downloaded
 #' \href{http://ftp.ensembl.org/pub/release-105/gtf/homo_sapiens/}{here}.
 #'
-#' @param gtf_path Path to the reference genome GTF file.
+#' @param gtf.path Path to the reference genome GTF file.
 #'
 #' @return Connection to the reference genome DB.
 #' @export
-LoadEdb <- function(gtf_path) {
+LoadEdb <- function(gtf.path) {
   if (!exists("edb")) {
     logger::log_info("\t\t Loading the reference genome.")
-    edb <<- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+    edb <<- ensembldb::ensDbFromGtf(gtf.path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
     edb <<- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
   } else {
     logger::log_info("\t\t Variable 'edb' already loaded!")
