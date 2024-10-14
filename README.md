@@ -20,7 +20,9 @@ It contains R scripts designed to generate three different SQLite databases from
    - [init_age.R](#init_ager)
    - [init_ENCODE.R](#init_encoder)
 3. [Function Descriptions](#function-descriptions)
-4. [License](#license)
+4. [Dependencies](#dependencies)
+5. [Environments](#environments)
+6. [License](#license)
 
 ---
 
@@ -112,6 +114,100 @@ source("init_ENCODE.R")
 * tidy_data_pior_sql()
 * generate_transcript_biotype_percentage()
 * sql_database_generation()
+
+## Dependencies
+
+1. regtools (visit: https://regtools.readthedocs.io/en/latest/)
+```bash
+$ git clone https://github.com/griffithlab/regtools
+$ cd regtools/
+$ mkdir build
+$ cd build/
+$ cmake ..
+$ make
+```
+
+2. samtools (visit: https://www.htslib.org/download/)
+```bash
+$ wget https://github.com/samtools/samtools/releases/download/1.21/samtools-1.21.tar.bz2                  
+$ tar -xvjf samtools-1.21.tar.bz2   
+$ cd samtools-1.21/
+$ ./configure --prefix=/absolute_path/to_your_samtools_folder/samtools-1.21/
+$ make
+$ make install
+```
+
+3. 'hg38-blacklist.v2.bed'
+File that contains the ENCODE blacklist regions found in the hg38 (paper: https://www.nature.com/articles/s41598-019-45839-z).
+```bash
+$ wget https://github.com/Boyle-Lab/Blacklist/raw/refs/heads/master/lists/hg38-blacklist.v2.bed.gz
+$ gzip -d hg38-blacklist.v2.bed.gz
+```
+
+4. 'Homo_sapiens.GRCh38.111.chr.gtf'
+```bash
+$ wget http://ftp.ensembl.org/pub/release-111/gtf/homo_sapiens/Homo_sapiens.GRCh38.111.chr.gtf.gz
+$ gzip -d Homo_sapiens.GRCh38.111.chr.gtf.gz
+```
+
+5. 'MANE.GRCh38.v1.0.ensembl_genomic.gtf'
+MANE info: https://www.ncbi.nlm.nih.gov/refseq/MANE/
+```bash
+$ wget https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/MANE.GRCh38.v1.4.ensembl_genomic.gtf.gz
+$ gzip -d MANE.GRCh38.v1.4.ensembl_genomic.gtf.gz
+```
+
+6. 'Homo_sapiens.GRCh38.dna.primary_assembly.fa', 'Homo_sapiens.GRCh38.dna.primary_assembly.fa.fai'
+```bash
+$ wget https://ftp.ensembl.org/pub/current_fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz --no-check-certificate
+$ gzip -d Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+$ samtools faidx ./Homo_sapiens.GRCh38.dna.primary_assembly.fa
+```
+
+7. MAXENTSCAN score software
+Software downloaded from 'http://hollywood.mit.edu/burgelab/software.html'. More info: http://hollywood.mit.edu/burgelab/maxent/download/
+```bash
+$ wget http://hollywood.mit.edu/burgelab/maxent/download/fordownload.tar.gz
+$ tar -zxvf fordownload.tar.gz
+```
+
+8. hg38.phastCons17way.bw
+```bash
+$ wget https://hgdownload.soe.ucsc.edu/goldenPath/hg38/phastCons17way/hg38.phastCons17way.bw
+```
+
+9. Context-dependent tolerance scores (CDTS)
+This are the context-dependent tolerance scores (CDTS) or constraint scores that are computed from the paper: The human noncoding genome defined by genetic diversity - Iulio et al. - 2018
+Download page: http://www.hli-opendata.com/noncoding/
+Download link for N7794unrelated.txt.gz: http://www.hli-opendata.com/noncoding/coord_CDTS_percentile_N7794unrelated.txt.gz.
+
+10. 'major_introns_tidy.rds' and 'minor_introns_tidy.rds'
+Original BED files downloaded from the IAOD database:
+```bash
+$ wget https://introndb.lerner.ccf.org/static/bed/GRCh38_U12.bed
+$ wget https://introndb.lerner.ccf.org/static/bed/GRCh38_U2.bed
+```
+
+11. 'clinvar.vcf'
+Data downloaded from https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+```bash
+$ wget https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+$ gzip -d clinvar.vcf.gz
+```
+
+12. Bedtools
+bedtools software - more info: https://bedtools.readthedocs.io/en/latest/content/installation.html
+```bash
+$ wget https://github.com/arq5x/bedtools2/releases/download/v2.29.1/bedtools-2.29.1.tar.gz
+$ tar -zxvf bedtools-2.29.1.tar.gz
+$ cd bedtools2
+$ make
+```
+
+Alternatively:
+```bash
+$ apt-get install bedtools
+```
 
 ## Environments
 The code included within this repository has been successfully tested on:
