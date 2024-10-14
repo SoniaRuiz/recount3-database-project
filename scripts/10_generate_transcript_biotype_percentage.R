@@ -1,13 +1,9 @@
-# gtf.version <- 110
-# database.folder <- "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/database/splicing_2read/110/"
-# results.folder <- "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/results/splicing_2read/110/"
 
 #' Title
 #' Per junction, this function calculates the percentage of transcripts in which this junction may appear, that are protein-coding
 #' @param gtf.version Version of the reference transcriptome to use. In this case it has been used '105' corresponding
 #' to Ensembl v105
 #' @param database.folder Path to the local folder that stores the database to be produced and the files needed to produce it 
-#' @param results.folder Local path to the folder that contains the results of the analyses performed
 #'
 #' @return
 #' @export
@@ -15,8 +11,7 @@
 #' @examples
 GenerateTranscriptBiotypePercentage <- function(gtf.version,
                                                 dependencies.folder,
-                                                database.folder,
-                                                results.folder) {
+                                                database.folder) {
   
   
   #######################################
@@ -26,8 +21,7 @@ GenerateTranscriptBiotypePercentage <- function(gtf.version,
   logger::log_info(paste0(Sys.time(), " - loading the human reference transcriptome ... "))
   
   ## Import HUMAN REFERENCE transcriptome
-  homo_sapiens_hg <- rtracklayer::import(con = paste0(dependencies.folder, 
-                                                      "/Homo_sapiens.GRCh38.",gtf.version,".chr.gtf")) %>% as_tibble()
+  homo_sapiens_hg <- rtracklayer::import(con = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.",gtf.version,".chr.gtf")) %>% as_tibble()
   
   ## Get transcripts
   transcripts_hg <- homo_sapiens_hg %>%
@@ -100,7 +94,7 @@ GenerateTranscriptBiotypePercentage <- function(gtf.version,
     replace(is.na(.), 0)
   
   saveRDS(object = transcripts_hg_percentage_tidy, 
-          file = file.path(results.folder, "all_split_reads_qc_level1_PC_biotype.rds"))
+          file = file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds"))
   
   logger::log_info(paste0(Sys.time(), " - results saved!"))
   

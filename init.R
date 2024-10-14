@@ -9,7 +9,7 @@ library(tidyverse)
 library(GenomicRanges)
 library(DBI)
 
-# source("/home/sruiz/PROJECTS/recount3-database-project/init.R")
+# source("/home/sg2173/PROYECTS/SR/recount3-database-project/init.R")
 
 # base_folder <- "/mnt/PROJECTS/splicing-accuracy-manuscript/"
 
@@ -30,22 +30,20 @@ project_name <- paste0(main_project_identifier, "_", supportive_reads, "read_sub
 args <-
   list(
     base_folder = here::here(),
-    dependencies_folder = file.path(here::here(), "dependencies"),
+    dependencies_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/dependencies"),
     #data_source = "data_sources/tcga" 
     #data_source = "data_sources/gtex"
     data_source = "data_sources/sra",
     recount3_project_IDs ="SRP181886",
     gtf_version = gtf_version,
-    database_folder = file.path(here::here(), "database", project_name, gtf_version),
-    results_folder = file.path(here::here(), "results", project_name, gtf_version),
-    figures_folder = file.path(here::here(), "results", project_name, gtf_version),
-    tpm_folder = file.path(here::here(), "results", project_name, "tpm")
+    database_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/database", project_name, gtf_version),
+    results_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", project_name, gtf_version),
+    tpm_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", project_name, "tpm")
   )
 
 
 dir.create(path = args$database_folder, recursive = T, showWarnings = F)
 dir.create(path = args$results_folder, recursive = T, showWarnings = F)
-dir.create(path = args$figures_folder, recursive = T, showWarnings = F) 
 dir.create(path = args$tpm_folder, recursive = T, showWarnings = F)
 
 
@@ -82,14 +80,8 @@ dir.create(path = args$tpm_folder, recursive = T, showWarnings = F)
 ## LOAD SOURCE SCRIPTS
 #####################################
 
-# scripts_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript/scripts/")
-
-scripts_folder <- file.path(args$base_folder, "scripts/")
-setwd(file.path(scripts_folder))
-files.sources = list.files()
-sapply(files.sources, source)
-setwd(file.path(args$base_folder))
-
+files.sources = list.files(path = file.path(args$base_folder,"scripts"))
+sapply(file.path(args$base_folder,"scripts", files.sources), source)
 
 
 #####################################
@@ -126,70 +118,70 @@ logger::log_layout(logger_layout)
   ## DOWNLOAD AND PREPARE JUNCTIONS FROM RECOUNT3 PROJECTS
   
   
-  DownloadRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
-                       project.name = project_name,
-                       gtf.version = args$gtf_version,
-                       blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
-                       gtf.path = file.path(args$dependencies_folder, paste0("/Homo_sapiens.GRCh38.", args$gtf_version, ".chr.gtf")),
-                       data.source = args$data_source,
-                       database.folder = args$database_folder,
-                       results.folder = args$results_folder)
+  # DownloadRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
+  #                      project.name = project_name,
+  #                      gtf.version = args$gtf_version,
+  #                      blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
+  #                      gtf.path = file.path(args$dependencies_folder, paste0("/Homo_sapiens.GRCh38.", args$gtf_version, ".chr.gtf")),
+  #                      data.source = args$data_source,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder)
 
-  PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
-                      data.source = args$data_source,
-                      results.folder = args$results_folder,
-                      subsampling = data_subsample,
-                      levelqc1.folder = args$database_folder,
-                      supporting.reads = supportive_reads,
-                      num.cores = 4)
+  # PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
+  #                     data.source = args$data_source,
+  #                     results.folder = args$results_folder,
+  #                     subsampling = data_subsample,
+  #                     levelqc1.folder = args$database_folder,
+  #                     supporting.reads = supportive_reads,
+  #                     num.cores = 4)
 
   #################################################
   ## JUNCTION PAIRING
-  
-  JunctionPairing(recount3.project.IDs = args$recount3_project_IDs,
-                   results.folder = args$results_folder,
-                   replace = T,
-                   num.cores = 8)
-  
-  GetAllAnnotatedSplitReads(recount3.project.IDs = args$recount3_project_IDs,
-                            database.folder = args$database_folder,
-                            results.folder = args$results_folder,
-                            num.cores = 8)
-  
-  GetAllRawJxnPairings(recount3.project.IDs = args$recount3_project_IDs,
-                           database.folder = args$database_folder,
-                           results.folder = args$results_folder,
-                           num.cores = 8)
-  
+
+  # JunctionPairing(recount3.project.IDs = args$recount3_project_IDs,
+  #                  results.folder = args$results_folder,
+  #                  replace = T,
+  #                  num.cores = 8)
+  # 
+  # GetAllAnnotatedSplitReads(recount3.project.IDs = args$recount3_project_IDs,
+  #                           database.folder = args$database_folder,
+  #                           results.folder = args$results_folder,
+  #                           num.cores = 8)
+  # 
+  # GetAllRawJxnPairings(recount3.project.IDs = args$recount3_project_IDs,
+  #                          database.folder = args$database_folder,
+  #                          results.folder = args$results_folder,
+  #                          num.cores = 8)
+
   #################################################
   ## DATA BASE
-  
+
   recount3_project_IDs_used <- readRDS(file = file.path(args$results_folder, "all_final_projects_used.rds"))
-  
-  
-  TidyDataPiorSQL(recount3.project.IDs = recount3_project_IDs_used,
-                  database.folder = args$database_folder,
-                  levelqc1.folder = args$database_folder,
-                  results.folder = args$results_folder)
-  
-  
-  GenerateTranscriptBiotypePercentage(gtf.version = args$gtf_version,
-                                      database.folder = args$database_folder,
-                                      results.folder = args$results_folder)
-  
-  
-  GenerateRecount3TPM(recount3.project.IDs = recount3_project_IDs_used,
-                      data.source = data_source,
-                      tpm.folder = args$tpm_folder,
-                      results.folder = args$results_folder)
-  
-  
-  
+
+
+  # TidyDataPiorSQL(recount3.project.IDs = recount3_project_IDs_used,
+  #                 database.folder = args$database_folder,
+  #                 levelqc1.folder = args$database_folder,
+  #                 results.folder = args$results_folder)
+
+
+  # GenerateTranscriptBiotypePercentage(gtf.version = args$gtf_version,
+  #                                     dependencies.folder = args$dependencies_folder,
+  #                                     database.folder = args$database_folder)
+
+
+  # GenerateRecount3TPM(recount3.project.IDs = c(recount3_project_IDs_used),
+  #                     data.source = args$data_source,
+  #                     tpm.folder = args$tpm_folder,
+  #                     results.folder = args$results_folder)
+
+
+
   database_sqlite_path <- paste0(args$database_folder,  "/", project_name, ".sqlite")
-  
+
   SqlDatabaseGeneration(database.path = database_sqlite_path,
                         recount3.project.IDs = recount3_project_IDs_used,
-                        remove.all = F,
+                        remove.all = T,
                         database.folder = args$database_folder,
                         results.folder = args$results_folder,
                         gtf.version = args$gtf_version,

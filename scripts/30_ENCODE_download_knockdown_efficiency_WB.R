@@ -3,11 +3,6 @@
 ## https://github.com/guillermo1996/ENCODE_Metadata_Extraction
 ##############################################################
 
-
-library(doSNOW)
-library(reticulate)
-
-
 #' Title
 #' Downloads from the ENCODE platform the WB details regarding the knockdown efficiency of each RBP
 #' @param metadata 
@@ -20,23 +15,23 @@ library(reticulate)
 DownloadKnockdownEfficiencyWB <- function(metadata,
                                           results.path) {
   
-  
   ## Create and load python environment -------------------------
   
-  virtualenv <- "ENCODE_python_env"
+  virtualenv <- here::here("virtual_env/ENCODE_python_env")
   reticulate::virtualenv_create(virtualenv)
   reticulate::use_virtualenv(virtualenv)
   
-  py_available()
-  py_install("pytesseract") 
-  py_install("tesseract")
-  py_install("pymupdf")
-  py_install("fitz") 
-  py_install("frontend") 
+  reticulate::py_available()
+  reticulate::py_install(envname = virtualenv, packages = "tesseract")
+  reticulate::py_install(envname = virtualenv, packages = "pytesseract") 
+  reticulate::py_install(envname = virtualenv, packages = "pymupdf")
+  reticulate::py_install(envname = virtualenv, packages = "frontend")
   
-  pytesseract <- import("pytesseract")
-  PIL <- import("PIL")
+  #reticulate::virtualenv_remove(envname = virtualenv, packages = c('tesseract'))
   
+  
+  pytesseract <- reticulate::import("pytesseract")
+  PIL <- reticulate::import("PIL")
   
   ## Set Variables ----------------------------------------------
 
@@ -46,7 +41,7 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   metadata_PCR_output <- file.path(results_path, "metadata_PCR_kEff.tsv")
   
   download_cores = 16
-  overwrite_results = T
+  overwrite_results = F
   resize_perc = 0.25
   min_width = 600
   
@@ -63,50 +58,53 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   CreateDirectories(target_RBPs, metadata_filtered)
   
   ## Download the files and add a column with their path
-  metadata_documents <- DownloadCharacterizationDocuments(metadata_filtered, download_cores, overwrite_results, silent = F)
+  metadata_documents <- DownloadCharacterizationDocuments(metadata_filtered, download_cores, overwrite_results = overwrite_results, silent = F)
+  
   
   ## Check the existence of the files
-  for(row_index in seq(nrow(metadata_documents))){
-    
+  for (row_index in seq(nrow(metadata_documents))) {
     row = metadata_documents[row_index, ]
     file_path <- row$file_path
     path <- row$path
     
-    if(!file.exists(file_path) || file.info(file_path)$size < 10){
+    if (!file.exists(file_path) || file.info(file_path)$size < 10) {
       logger::log_warn("Error for row ", row_index, "! File path ", path)
     }
-    
   }
   
   ## Extract the images of all files
-  metadata_images <- ExtractImages(metadata_documents, overwrite_results = overwrite_results, virtualenv_path)
+  metadata_images <- ExtractImages(metadata_documents, overwrite_results = overwrite_results, virtualenv_path = virtualenv)
   
   ## Extract text from images ----
   ## This cannot be separated into an external function.
   ## Probably because of some incompatibility with the reticulate library to use
   ## python.
   metadata_kEff <- foreach(row_index = seq(nrow(metadata_images))) %do%{
+    
     # row_index<-1
     row = metadata_images[row_index, ]
     path <- row$path
     image_path <- row$image_path
     
     ## If the image does not exists, return the unmodified row
-    if(!file.exists(image_path)) return(row)
+    if (!file.exists(image_path)) return(row)
     
-    image <- PIL$Image$open(image_path)
+    
+    image <- PIL$Image$open(fp = fs::path_expand(image_path))
     image_cropped <- image$crop(list(0, image$height*0.9, 0.8*image$width, image$height))
     image_small <- ResizeImage(image, resize_perc, min_width)
+    image_small$save(file.path(fs::path_expand(path), "cropped_image.png"))
     
-    image_small$save(paste0(path, "cropped_image.png"))
-    text_df <- pytesseract$image_to_string(image = image_small) %>%
+    
+    text_df <- pytesseract$pytesseract$image_to_string(image = image_small) %>%
       str_replace_all("\\f", "") %>%
       str_split("\\n", simplify = T) %>%
       str_split(" ", simplify = T) %>%
       .[1:2, ] %>%
       as_tibble()
     
-    if(ncol(text_df) == 5){
+    if (ncol(text_df) == 5) {
+      
       kEff_df <- text_df %>% 
         `colnames<-`(c("method", "K562_1", "K562_2", "HepG2_1", "HepG2_2")) %>%
         dplyr::mutate(across(-method, function(x) as.numeric(sub("%", "", x)))) %>%
@@ -119,7 +117,9 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
       
       row$PCR_HepG2 <- kEff_df %>% dplyr::filter(method != "Western") %>% dplyr::pull(HepG2)
       row$PCR_K562 <- kEff_df %>% dplyr::filter(method != "Western") %>% dplyr::pull(K562)
-    }else if(ncol(text_df) == 3){
+      
+    } else if (ncol(text_df) == 3) {
+      
       kEff_df <- text_df %>% 
         `colnames<-`(c("method", "cell_line_1", "cell_line_2")) %>%
         dplyr::mutate(across(-method, function(x) as.numeric(sub("%", "", x)))) %>%
@@ -131,7 +131,9 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
       
       row$PCR_HepG2 <- ifelse(row$cell_line == "HepG2", kEff_df %>% dplyr::filter(method != "Western") %>% dplyr::pull(cell_line), NA)
       row$PCR_K562 <- ifelse(row$cell_line == "K562", kEff_df %>% dplyr::filter(method != "Western") %>% dplyr::pull(cell_line), NA)
-    }else{
+      
+    } else {
+      
       logger::WARN("Error in row ", row_index, ". Columns are not valid")
       row$WB_HepG2 <- NA
       row$WB_K562 <- NA
@@ -143,7 +145,7 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   } %>% dplyr::bind_rows()
   
   ## Test for consistency between the cell lines ----
-  for(target_RBP in target_RBPs){
+  for (target_RBP in target_RBPs) {
     metadata_RBP <- metadata_kEff %>%  filter(target_gene == target_RBP)
     WB_HepG2 <- metadata_RBP$WB_HepG2
     WB_K562 <- metadata_RBP$WB_K562
@@ -212,6 +214,7 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
                                               download_cores = 1,
                                               overwrite_results = FALSE,
                                               silent = F){
+  
   if(!silent){
     pb <- txtProgressBar(max=nrow(metadata_filtered), style=3)
     progress <- function(n) setTxtProgressBar(pb, n)
@@ -223,6 +226,8 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
   cl <- makeCluster(download_cores)
   registerDoSNOW(cl)
   metadata_documents <- foreach(row_index = seq(nrow(metadata_filtered)), .options.snow=opts) %dopar%{
+    
+    # row_index <- 1
     row = metadata_filtered[row_index, ]
     
     ## Two possible download paths:
@@ -237,7 +242,7 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
     ## the file is too small, try to download it from the different links. If
     ## none it success, remove the resulted file. We also modify the column
     ## "file_path" if the file was successfully created.
-    if(overwrite_results || !file.exists(file_path) || file.info(file_path)$size < 10){
+    if (overwrite_results || !file.exists(file_path) || file.info(file_path)$size < 10) {
       tryCatch({
         download.file(download_link, file_path, method = "wget", extra = "--quiet --no-check-certificate")
       }, error = function(e){
@@ -249,13 +254,13 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
       })
     } 
     
-    if(!file.exists(file_path) || file.info(file_path)$size < 10){
+    if (!file.exists(file_path) || file.info(file_path)$size < 10) {
       row$file_path <- NA
     }
     
     return(row)
   } %>% dplyr::bind_rows()
-  if(!silent) close(pb)
+  if (!silent) close(pb)
   stopCluster(cl)
   
   return(metadata_documents)
@@ -278,7 +283,11 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
 ExtractImages <- function(metadata_documents,
                           overwrite_results = FALSE,
                           virtualenv_path){
+  
+  
   metadata_images <- foreach(row_index = seq(nrow(metadata_documents))) %do%{
+    
+    # row_index <- 1
     row = metadata_documents[row_index, ]
     
     biosample = row$biosample
@@ -286,15 +295,16 @@ ExtractImages <- function(metadata_documents,
     image_path <- paste0(row$path, biosample, "_Western_Blot_Analysis.png")
     
     ## If the file does not exists return the unmodified row
-    if(!file.exists(file_path)) return(row)
+    if (!file.exists(file_path)) return(row)
     
     ## If overwrite results is set to TRUE or the image does not exists, execute
     ## a python command to extract the figures. All the figures must have a .png
     ## or .jpeg extension. We remove all images but the last one, which contains
     ## the Western Blotting results.
-    if(overwrite_results || !file.exists(image_path)){
+    if (overwrite_results || !file.exists(image_path)) {
+      
       system2(command = path.expand(path = paste0(virtualenv_path,"/bin/python")),
-              args = c("-m fitz extract -images", file_path, "-output", row$path))
+              args = c("-m pymupdf extract -images", file_path, "-output", row$path))
       
       short_images <- list.files(row$path, pattern = ".png|.jpeg")
       long_images <- list.files(row$path, pattern = ".png|.jpeg", full.names = T)

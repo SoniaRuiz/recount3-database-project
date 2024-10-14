@@ -27,7 +27,7 @@ JunctionPairing <- function(recount3.project.IDs,
     folder_root <- file.path(results.folder, project_id)
     folder_base_data <- file.path(folder_root, "base_data")
     
-    logger::log_info("\t\t Getting data from '", project_id, "' project...")
+    logger::log_info("Getting data from '", project_id, "' project...")
     
     ## Load clusters
     

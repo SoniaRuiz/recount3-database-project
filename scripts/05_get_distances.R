@@ -38,7 +38,7 @@ GetDistances <- function(project.id,
     
     split_read_counts_sample <- split.read.counts %>%
       as_tibble() %>%
-      select(junID, all_of(as.character(sample))) %>%
+      dplyr::select(junID, all_of(as.character(sample))) %>%
       drop_na() %>%
       filter(.data[[sample]] > 0)
     
@@ -54,7 +54,7 @@ GetDistances <- function(project.id,
     distances <- bind_rows(
       ComputeDistances(junction.class = "novel_donor", split.reads.details.sample = split_reads_details_sample, sample),
       ComputeDistances(junction.class = "novel_acceptor", split.reads.details.sample = split_reads_details_sample, sample)
-    ) %>% select(-sample)
+    ) %>% dplyr::select(-sample)
     
     saveRDS(distances, file_path)
     

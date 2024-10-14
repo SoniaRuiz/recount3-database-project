@@ -949,7 +949,7 @@ AddTargetGeneCategory <- function(metadata_df,
   
   
   metadata_df <- readr::read_delim(file = metadata_df, delim = "\t", show_col_types = F)
-  target_RBPs_metadata <- xlsx::read.xlsx(file = input_Category, sheetIndex = 1) %>% drop_na()
+  target_RBPs_metadata <- readxl::read_xlsx(path = input_Category, sheet = 1) %>% drop_na()
   
   
   metadata_df <- metadata_df %>% 

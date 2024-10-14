@@ -27,12 +27,12 @@ ENCODEDownloadBams <- function(metadata,
   
   
   # # 2. Download the BAM files ---
-  logger::log_info("Starting the download BAM files process.")
+  #logger::log_info("Starting the download BAM files process....")
   
   for (target_RBP in target_RBPs) {
     
-    # target_RBP <- target_RBPs[7]
-    logger::log_info("\t Downloading target RBP: ", target_RBP)
+    # target_RBP <- target_RBPs[1]
+    logger::log_info("Target RBP: ", target_RBP)
     
     ## Target RBP variables
     RBP_metadata <- metadata %>% dplyr::filter(target_gene == target_RBP) %>% dplyr::arrange(experiment_type)
@@ -41,7 +41,7 @@ ENCODEDownloadBams <- function(metadata,
     
     ## If the junctions from all sample experiments have already been extracted, move on to the next RBP
     if (nrow(CheckDownloadedFiles(RBP.metadata = RBP_metadata, RBP.path = RBP_path)) == nrow(RBP_metadata)) {
-      logger::log_info("\t\t Ignoring download and extraction. All junctions already extracted!")
+      logger::log_info("Ignoring download and extraction. All junctions already extracted!")
       next;
     }
     
@@ -84,7 +84,7 @@ CreateSubFolders <- function(RBP.metadata,
                              RBP.path, 
                              RBP.clusters,
                              generate_script = T) {
-  logger::log_info("\t\t Generating the folder structure in ", RBP.path)
+  logger::log_info("Generating the folder structure in ", RBP.path)
   ## Loop through the clusters and generate a specific folder for each one.
   for (cluster in RBP.clusters) {
     cluster_path <- paste0(RBP.path, cluster, "/")
@@ -117,7 +117,7 @@ CreateSubFolders <- function(RBP.metadata,
 #' @export
 GenerateDownloadScript <- function(cluster_metadata,
                                    cluster_path) {
-  logger::log_info("\t\t Generating the download scripts in ", cluster_path)
+  logger::log_info("Generating the download scripts in ", cluster_path)
   
   ## Generate the script's text
   download_script <- "# Script to download the .bam files\n"
@@ -194,85 +194,140 @@ DownloadExtractBamFiles <- function(RBP.metadata,
                                     num.cores = 4,
                                     samtools.threads = 1,
                                     samtools.memory = "5G",
-                                    samtools.path = "",
-                                    regtools.path = "",
+                                    samtools.path,
+                                    regtools.path,
                                     overwrite = F) {
   
-  logger::log_info("\t Starting the download and extraction process.")
+  
   
   ## Only download BAM files for the samples not yet downloaded and junction extracted
-  RBP.metadata <- CheckFilesToDownload(RBP.metadata, RBP.path)
-  
-  ## Multiprocessing generation. Add argument "output.file" to
-  ## parallel::makeCluster() if you want to output information about the parallel
-  ## execution
-  cl <- parallel::makeCluster(num.cores, outfile = "")
-  doParallel::registerDoParallel(cl)
-  
-  ## Multiprocessing loop
-  metrics <- foreach(i = 1:nrow(RBP.metadata), .export = "GetDownloadLinkMetadata", .packages = "tidyverse") %dopar% {
-    ## Definition of the variables
-    sample_id <- RBP.metadata[i, ] %>% pull(sample_id)
-    sample_cluster <- RBP.metadata[i, ] %>% pull(experiment_type)
-    sample_target_gene = RBP.metadata[i, ] %>% pull(target_gene)
-    download_link <- GetDownloadLinkMetadata(RBP.metadata[i, ])
-    file_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam")
-    sort_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort")
-    junc_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort.s0.junc")
+  RBPs_BAM_to_download <- CheckBAMFilesToDownload(RBP.metadata, RBP.path)
+  if (nrow(RBPs_BAM_to_download) > 0) {
     
-    ## Check if file BAM file is already extracted
-    if(!overwrite & file.exists(junc_path)) {
-      return(paste0("\t\t Ignoring extraction and download. Junction file for sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ") already found!"))
+    logger::log_info("Starting the download process....")
+    
+    ## Multiprocessing generation. Add argument "output.file" to
+    ## parallel::makeCluster() if you want to output information about the parallel
+    ## execution
+    cl <- parallel::makeCluster(num.cores, outfile = "")
+    doParallel::registerDoParallel(cl)
+    
+    ## Multiprocessing loop
+    metrics <- foreach(i = 1:nrow(RBPs_BAM_to_download), .export = "GetDownloadLinkMetadata", .packages = "tidyverse") %dopar% {
+      #i <- 1
+      ## Definition of the variables
+      sample_id <- RBPs_BAM_to_download[i, ] %>% pull(sample_id)
+      sample_cluster <- RBPs_BAM_to_download[i, ] %>% pull(experiment_type)
+      sample_target_gene = RBPs_BAM_to_download[i, ] %>% pull(target_gene)
+      download_link <- GetDownloadLinkMetadata(RBPs_BAM_to_download[i, ])
+      file_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam")
+      
+      ## Check if file BAM file is already extracted
+      if(!overwrite & file.exists(file_path)) {
+        return(paste0("Ignoring extraction and download. Junction file for sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ") already found!"))
+      }
+      
+      ## Download the BAM file
+      #logger::log_info("Starting download of sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")")
+      download.file(download_link, file_path, method = "wget", extra = "-c --quiet --no-check-certificate")
+      
+      
     }
+    ## Stop the parallel cluster
+    parallel::stopCluster(cl)
     
-    ## Download the BAM file
-    #logger::log_info("Starting download of sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")")
-    download.file(download_link, file_path, method = "wget", extra = "-c --quiet --no-check-certificate")
-    
-    ## Extract the BAM file into JUNC using samtools and regtools
-    #logger::log_info("Starting the sorting process.")
-    system2(command = paste0(samtools.path, "samtools"), args = c(
-      "sort", file_path,
-      "-o", sort_path,
-      "--threads", samtools.threads,
-      "-m", samtools.memory
-    ))
-    if(!file.exists(sort_path)) return("Sorting failed")
-    
-    #logger::log_info("\t Starting the indexing process.")
-    system2(command = paste0(samtools.path, "samtools"), args = c(
-      "index", sort_path,
-      "-@", samtools.threads
-    ))
-    
-    #logger::log_info("\t Starting the extraction process.")
-    system2(command = paste0(regtools.path, "regtools"), args = c(
-      "junctions extract", sort_path,
-      "-m 25",
-      "-M 1000000",
-      "-s 0",
-      "-o", junc_path
-    ))
-    
-    ## Remove the files that are not necessary
-    system2(command = "rm", args = c(file_path))
-    system2(command = "rm", args = c(sort_path))
-    system2(command = "rm", args = c(paste0(sort_path, ".bai")))
-    if(!file.exists(junc_path)){
-      return(c(
-        paste0("\t\t Error extracting sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")", "."),
-        paste0("\t\t Removing all intermediary files. Please run the analysis again.")
-      ))
-    }else{
-      return(paste0("\t\t Successfully extracted the junctions. Removing all intermediary files (BAM included)."))
-    }
+    ## Print the metrics
+    invisible(lapply(metrics, function(x) logger::log_info(x[1])))
+    invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
   }
-  ## Stop the parallel cluster
-  parallel::stopCluster(cl)
   
-  ## Print the metrics
-  invisible(lapply(metrics, function(x) logger::log_info(x[1])))
-  invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
+  
+  RBPs_jxn_to_extract <- CheckJxnFilesToExtract(RBP.metadata, RBP.path) %>% arrange(sample_id)
+  if (nrow(RBPs_jxn_to_extract) > 0) {
+    
+    logger::log_info("Starting the extraction process...")
+    
+    ## Multiprocessing generation. Add argument "output.file" to
+    ## parallel::makeCluster() if you want to output information about the parallel
+    ## execution
+    cl <- parallel::makeCluster(num.cores, outfile = "")
+    doParallel::registerDoParallel(cl)
+    
+    ## Multiprocessing loop
+    metrics <- foreach(i = 1:nrow(RBPs_jxn_to_extract), .packages = "tidyverse") %dopar% {
+      #i <- 1
+      ## Definition of the variables
+      sample_id <- RBPs_jxn_to_extract[i, ] %>% pull(sample_id)
+      sample_cluster <- RBPs_jxn_to_extract[i, ] %>% pull(experiment_type)
+      sample_target_gene = RBPs_jxn_to_extract[i, ] %>% pull(target_gene)
+      
+      file_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam")
+      sort_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort")
+      junc_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort.s0.junc")
+
+      ## Download the BAM file
+      logger::log_info("Starting sorting process of sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")")
+      
+      if (!file.exists(file_path)) { stop(".bam file does not exist!")}
+      
+      ## Writing of the script.
+      tryCatch(
+        {
+          ## Sort the BAM file using samtools
+          system2(command = paste0(samtools.path, "samtools"), args = c(
+            "sort", file_path,
+            "-o", sort_path,
+            "--threads", samtools.threads,
+            "-m", samtools.memory
+          ))
+          
+          #if(!file.exists(sort_path)) stop("Sorting failed")
+          
+          logger::log_info("Starting the indexing process.")
+          system2(command = paste0(samtools.path, "samtools"), args = c(
+            "index", sort_path,
+            "-@", samtools.threads
+          ))
+          
+          #if(!file.exists(sort_path)) stop("Sorting failed")
+          
+          logger::log_info("Starting the junction extraction process...")
+          system2(command = paste0(regtools.path, "regtools"), args = c(
+            "junctions extract", sort_path,
+            "-m 25",
+            "-M 1000000",
+            "-s XS",
+            "-o", junc_path
+          ))
+          
+        },
+        error = function(e) message("Error: ", e)
+      )
+      
+      
+      
+      ## Remove the files that are not necessary
+      # system2(command = "rm", args = c(file_path))
+      # system2(command = "rm", args = c(sort_path))
+      # system2(command = "rm", args = c(paste0(sort_path, ".bai")))
+      
+      if(!file.exists(junc_path)){
+        return(c(
+          paste0("Error extracting sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")", "."),
+          paste0("Removing all intermediary files. Please run the analysis again.")
+        ))
+      }else{
+        return(paste0("Successfully extracted the junctions. Removing all intermediary files (BAM included)."))
+      }
+    }
+    ## Stop the parallel cluster
+    parallel::stopCluster(cl)
+    
+    ## Print the metrics
+    invisible(lapply(metrics, function(x) logger::log_info(x[1])))
+    invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
+  }
+
 }
 
 #' Checks if all the JUNC files in the input dataframe already exists
@@ -301,8 +356,18 @@ CheckDownloadedFiles <- function(RBP.metadata,
 #'
 #' @return Whether the JUNC files for the input metadata exists or not.
 #' @export
-CheckFilesToDownload <- function(RBP.metadata,
-                                 RBP.path){
+CheckBAMFilesToDownload <- function(RBP.metadata,
+                                    RBP.path){
+  
+  file_names <- apply(RBP.metadata, 1, function(x) {
+    paste0(RBP.path, x["experiment_type"], "/", x["sample_id"], ".bam")
+  })
+  
+  return(RBP.metadata[which(!file.exists(file_names)),])
+}
+
+CheckJxnFilesToExtract <- function(RBP.metadata,
+                                   RBP.path){
   
   file_names <- apply(RBP.metadata, 1, function(x) {
     paste0(RBP.path, x["experiment_type"], "/", x["sample_id"], ".bam.sort.s0.junc")
@@ -310,4 +375,3 @@ CheckFilesToDownload <- function(RBP.metadata,
   
   return(RBP.metadata[which(!file.exists(file_names)),])
 }
-

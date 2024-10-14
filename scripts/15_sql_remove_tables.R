@@ -9,9 +9,6 @@
 #' @examples
 SqlRemoveTables <- function(database.path, all, con = NULL) {
   
-  if (is.null(con)) {
-    con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database.path)
-  }
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=0")
   
   tables <- dbListTables(con)
@@ -33,6 +30,4 @@ SqlRemoveTables <- function(database.path, all, con = NULL) {
       
     }
   }
-  
-  DBI::dbDisconnect(conn = con)
 }

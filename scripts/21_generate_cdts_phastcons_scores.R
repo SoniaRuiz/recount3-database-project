@@ -23,12 +23,6 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
     db.introns <- readRDS(file = paste0(folder.name, "/", cluster, "_db.introns.rds")) %>%
       distinct(ref_junID, .keep_all = T)
   }
-  if ( !str_detect(string = db.introns[1, ]$seqnames, pattern = "chr") ) {
-    db.introns <- db.introns %>% GRanges() %>% diffloop::addchr()
-  } else {
-    db.introns <- db.introns %>% GRanges() 
-  }
- 
   
   ###########################################
   ## PHASTCONS SCORES
@@ -52,26 +46,27 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
         
       # i_size <- 35
       
-      ## Calculate donor scores
+      ## Calculate donor (5'ss) scores -----------------------------------------
+      
       logger::log_info(i_size, "bp - Calculating PhastCons" , p_type, " scores overlapping donor sequences...")
       gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
                                    ranges = IRanges(start = db.introns %>% start(), 
-                                                    end = db.introns %>% start() + i_size))
+                                                    end = db.introns %>% start() + i_size),
+                                   strand = db.introns %>% strand())
+      
       values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
-      phastCons_5ss <- get_conservation_score_for_regions_bw(bw_path = bw_path,
-                                                             gr = gr, 
-                                                             summaryFun = "mean") %>% 
-        as_tibble() %>%
+      
+      phastCons_5ss <- get_conservation_score_for_regions_bw(bw_path, gr, summaryFun = "mean") %>% as_tibble() %>%
         dplyr::rename_with(.fn = ~paste0(., "5ss_", i_size), .cols = paste0("mean_phastCons", p_type, "way"))
       
       
+      ## Calculate acceptor (3'ss) scores --------------------------------------
       
-      
-      ## Calculate acceptor scores
       logger::log_info(i_size, "bp - Calculating PhastCons" , p_type, " scores overlapping acceptor sequences...")
       gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
                                    ranges = IRanges(start = db.introns %>% end() - i_size, 
-                                                    end = db.introns %>% end()))
+                                                    end = db.introns %>% end()),
+                                   strand = db.introns %>% strand)
       values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
       phastCons_3ss <- get_conservation_score_for_regions_bw(bw_path = bw_path,
                                                              gr = gr, 
@@ -116,7 +111,8 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
     logger::log_info(i_size, "bp - CDTS calculating donor sequences...")
     gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
                                  ranges = IRanges(start = db.introns %>% start(),
-                                                  end = db.introns %>% start() + i_size))
+                                                  end = db.introns %>% start() + i_size),
+                                 strand = db.introns %>% strand)
     values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
     CDTS_5ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
                                                     gr = gr,
@@ -183,9 +179,9 @@ get_conservation_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "me
   
   phast_cons_score <- bw_path %>% str_replace(".*/", "") %>% str_extract("phastCons.*way")
   
-  gr_w_scores <- summary(BigWigFile, gr, size = 1L, type = summaryFun) %>% unlist()
+  gr_w_scores <- summary(object = BigWigFile, gr, size = 1L, type = summaryFun) %>% unlist()
   
-  stopifnot((width(gr)  == width(gr_w_scores)))
+  stopifnot((width(gr) == width(gr_w_scores)))
   
   elementMetadata(gr)[[str_c(summaryFun, "_", phast_cons_score)]] <- gr_w_scores$score
   

@@ -60,5 +60,5 @@ dependencies/*
 !dependencies/NMD.txt
 !dependencies/RBPs_subgroups.xlsx
 
-analysis.R
-power_calculations.R
+slurm
+virtual_env

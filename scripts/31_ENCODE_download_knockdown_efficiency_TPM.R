@@ -45,19 +45,18 @@ DownloadKnockdownEfficiencyTPM <- function(metadata,
   #metadata <- readr::read_delim(metadata_path, show_col_types = F) %>% as_tibble()
   
   target_RBPs <- metadata %>%
-    #dplyr::filter(if_any(c(Splicing_regulation, Spliceosome, Exon_junction_complex, NMD), ~ . != 0)) %>%
     dplyr::filter(!is.na(gene_quantification_id)) %>%
     dplyr::pull(target_gene) %>%
     unique()
   
-  print(target_RBPs)
+  #print(target_RBPs)
   
-  library("org.Hs.eg.db") # remember to install it if you don't have it already
   ensembl_target_RBPs <- mapIds(org.Hs.eg.db, keys = target_RBPs, keytype = "SYMBOL", column="ENSEMBL") %>% 
     as.data.frame() %>%
     tibble::rownames_to_column() %>%
-    dplyr::rename("hgnc_symbol" = "rowname",
-                  "ensembl_gene_id" = ".")
+    dplyr::rename("hgnc_symbol" = "rowname", "ensembl_gene_id" = ".")
+  
+  
   
   metadata_filtered <- metadata %>%
     dplyr::filter(target_gene %in% target_RBPs, !is.na(gene_quantification_id)) %>%
@@ -75,9 +74,9 @@ DownloadKnockdownEfficiencyTPM <- function(metadata,
                                                           download_cores, 
                                                           overwrite_results)
   print(metadata_quantifications)
+  
   ## Extract & save the TPMs ----
-  metadata_TPM <- extractTPM(metadata_quantifications,
-                             output_file = main_path)
+  metadata_TPM <- extractTPM(metadata_quantifications, output_file = main_path)
   
   ## Generate and save the knockdown efficiencies ----
   # metadata_kEff <- generateKnockdownEfficiency(metadata_TPM,
@@ -188,25 +187,25 @@ getDownloadLinkGeneQuantification <- function(row){
   return(paste0("https://www.encodeproject.org/files/", gene_quantification_id, "/@@download/", gene_quantification_id, ".tsv"))
 }
 
-#' Converts HGNC gene names to ENSEMBL ID
-#'
-#' @param gene_list List of genes in HGCN nomenclature
-#'
-#' @return Data.frame containing two columns: HGCN gene names and ENSEMBL gene
-#'   names. In some situations, two or more ENSEMBL names are associated with
-#'   the same HGCN name.
-#' @export
-translateGenes <- function(gene_list){
-  ensembl <- biomaRt::useMart(biomart = "ensembl", dataset="hsapiens_gene_ensembl")
-  
-  
-  gene_df <- biomaRt::getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
-                            filter = "hgnc_symbol",
-                            mart = ensembl,
-                            values = gene_list)
-  
-  return(gene_df)
-}
+#' #' Converts HGNC gene names to ENSEMBL ID
+#' #'
+#' #' @param gene_list List of genes in HGCN nomenclature
+#' #'
+#' #' @return Data.frame containing two columns: HGCN gene names and ENSEMBL gene
+#' #'   names. In some situations, two or more ENSEMBL names are associated with
+#' #'   the same HGCN name.
+#' #' @export
+#' translateGenes <- function(gene_list){
+#'   ensembl <- biomaRt::useMart(biomart = "ensembl", dataset="hsapiens_gene_ensembl")
+#'   
+#'   
+#'   gene_df <- biomaRt::getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
+#'                             filter = "hgnc_symbol",
+#'                             mart = ensembl,
+#'                             values = gene_list)
+#'   
+#'   return(gene_df)
+#' }
 
 #' Extract TPM of a particular
 #'
@@ -261,6 +260,7 @@ extractTPM <- function(metadata_quantifications,
           filter(TPM > 0)
         
         return(read_tpm)
+        
       } %>% dplyr::bind_rows()
       
       
@@ -291,50 +291,50 @@ extractTPM <- function(metadata_quantifications,
   
 }
 
-#' Calculates the knockdown efficiency (kEff)
-#'
-#' From the metadata data.frame with the TPM information, it groups by target
-#' gene and by experiment type (control/case) and calculates the knockdown
-#' efficiency first by calculating the averages in both clusters, and then by
-#' applying the following equation:
-#'
-#' $$ kEff=(1-\frac{TPM_case}{TPM_control})*100% $$
-#'
-#' The same procedure is also executed but grouped by cell line, to also report
-#' the efficiency for different cell lines.
-#'
-#' @param metadata_TPM Data.frame with the TPM of the target gene for each
-#'   sample.
-#' @param output_file (Optional) Path to where the resulted data.frame will be
-#'   stored
-#'
-#' @return Data.frame with the target gene and the estimated knockdown
-#'   efficiency. The efficiency is also calculated by cell line.
-#' @export
-generateKnockdownEfficiency <- function(metadata_TPM,
-                                        output_file = ""){
-  kEff_global <- metadata_TPM %>% 
-    dplyr::group_by(target_gene, experiment_type) %>%
-    dplyr::summarize(TPM_avg = mean(TPM, na.rm = T)) %>%
-    tidyr::pivot_wider(id_cols = target_gene, names_from = experiment_type, values_from = TPM_avg) %>%
-    dplyr::mutate(kEff = (1 - case/control)*100)
-  
-  kEff_cell_line <- metadata_TPM %>% 
-    dplyr::group_by(target_gene, cell_line, experiment_type) %>%
-    dplyr::summarize(TPM_avg = mean(TPM, na.rm = T)) %>%
-    tidyr::pivot_wider(id_cols = c(target_gene, cell_line), names_from = experiment_type, values_from = TPM_avg) %>%
-    dplyr::mutate(kEff = (1 - case/control)*100) %>%
-    tidyr::pivot_wider(id_cols = target_gene, names_from = cell_line, values_from = kEff)
-  
-  metadata_kEff <- kEff_global %>% 
-    dplyr::left_join(kEff_cell_line, by = "target_gene") %>%
-    `colnames<-`(c("target_gene", "Avg_TPM_case", "Avg_TPM_control", "kEff", "kEff_HepG2", "kEff_K562"))
-  
-  if(output_file != ""){
-    write.table(metadata_kEff, output_file, sep = "\t", row.names = F, quote = FALSE)
-  }
-  
-  return(metadata_kEff)
-}
-
-## 31
+#' #' Calculates the knockdown efficiency (kEff)
+#' #'
+#' #' From the metadata data.frame with the TPM information, it groups by target
+#' #' gene and by experiment type (control/case) and calculates the knockdown
+#' #' efficiency first by calculating the averages in both clusters, and then by
+#' #' applying the following equation:
+#' #'
+#' #' $$ kEff=(1-\frac{TPM_case}{TPM_control})*100% $$
+#' #'
+#' #' The same procedure is also executed but grouped by cell line, to also report
+#' #' the efficiency for different cell lines.
+#' #'
+#' #' @param metadata_TPM Data.frame with the TPM of the target gene for each
+#' #'   sample.
+#' #' @param output_file (Optional) Path to where the resulted data.frame will be
+#' #'   stored
+#' #'
+#' #' @return Data.frame with the target gene and the estimated knockdown
+#' #'   efficiency. The efficiency is also calculated by cell line.
+#' #' @export
+#' generateKnockdownEfficiency <- function(metadata_TPM,
+#'                                         output_file = ""){
+#'   kEff_global <- metadata_TPM %>% 
+#'     dplyr::group_by(target_gene, experiment_type) %>%
+#'     dplyr::summarize(TPM_avg = mean(TPM, na.rm = T)) %>%
+#'     tidyr::pivot_wider(id_cols = target_gene, names_from = experiment_type, values_from = TPM_avg) %>%
+#'     dplyr::mutate(kEff = (1 - case/control)*100)
+#'   
+#'   kEff_cell_line <- metadata_TPM %>% 
+#'     dplyr::group_by(target_gene, cell_line, experiment_type) %>%
+#'     dplyr::summarize(TPM_avg = mean(TPM, na.rm = T)) %>%
+#'     tidyr::pivot_wider(id_cols = c(target_gene, cell_line), names_from = experiment_type, values_from = TPM_avg) %>%
+#'     dplyr::mutate(kEff = (1 - case/control)*100) %>%
+#'     tidyr::pivot_wider(id_cols = target_gene, names_from = cell_line, values_from = kEff)
+#'   
+#'   metadata_kEff <- kEff_global %>% 
+#'     dplyr::left_join(kEff_cell_line, by = "target_gene") %>%
+#'     `colnames<-`(c("target_gene", "Avg_TPM_case", "Avg_TPM_control", "kEff", "kEff_HepG2", "kEff_K562"))
+#'   
+#'   if(output_file != ""){
+#'     write.table(metadata_kEff, output_file, sep = "\t", row.names = F, quote = FALSE)
+#'   }
+#'   
+#'   return(metadata_kEff)
+#' }
+#' 
+#' ## 31

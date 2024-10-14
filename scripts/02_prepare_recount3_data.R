@@ -233,7 +233,7 @@ PrepareRecount3Data <- function(recount3.project.IDs,
           stopifnot(
             "Still there are split reads with a lower number of supporting reads indicated by parameter." =
               local_counts %>%
-              mutate(sumCounts = rowSums(select(., !contains("junID")))) %>%
+              mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
               filter(sumCounts < 1) %>%
               nrow() == 0
           )

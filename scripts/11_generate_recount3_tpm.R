@@ -36,12 +36,13 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
   ## Loop through the recount3 projects received by parameter
   # doParallel::registerDoParallel(5)
   
-  for(i in seq(length(recount3.project.IDs)) ) {
+  for (i in seq(length(recount3.project.IDs))) {
+    
   # Register cluster
   #cluster <- makeCluster(5)
   #registerDoParallel(cluster)
   #foreach(i = seq(length(recount3.project.IDs))) %dopar% {
-    # i <- 5
+    # i <- 1
     # project_id <- "COAD"
     
     project_id <- recount3.project.IDs[i]
@@ -49,14 +50,16 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
     results_folder_local_tpm <- paste0(results_folder_local, "/tpm/")
     dir.create(file.path(results_folder_local_tpm), recursive = TRUE, showWarnings = F)
     dir.create(file.path(tpm.folder), recursive = TRUE, showWarnings = F)
+    
     recount_tpm <- NULL
     
-    if ( !file.exists(paste0(tpm.folder, "/", project_id, "_tpm.rds")) ) {
+    if (!file.exists(paste0(tpm.folder, "/", project_id, "_tpm.rds"))) {
     
       logger::log_info("Downloading raw counts from ", project_id, "...") 
       
       ## 1. Get expression data from recount3, transform raw counts and calculate TPM
       rse <- NULL
+      
       tryCatch(
         eval(
           rse <- recount3::create_rse_manual(
@@ -69,26 +72,26 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
           
          ),
         error = function(e) {
-          rse = NULL
+          stop(e)
         }
       )
       
       ## The counts download has been successful, so we calculate the TPM
-      if ( !is.null(rse) ) {
-        message(project_id)
-        SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
-        # SummarizedExperiment::assayNames(rse) %>% logger::log_info()
+      if (!is.null(rse)) {
         
-        logger::log_info("Computing TPM for genes found in ", project_id)
+        SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
+     
+        logger::log_info("Computing TPM for genes found in ", project_id, "...")
         recount_tpm <- recount::getTPM(rse)
 
         ## Save tpm values for all genes across all samples
-        saveRDS(object = recount_tpm,
-                file = paste0(tpm.folder, "/", project_id, "_tpm.rds"))
+        saveRDS(object = recount_tpm, file = paste0(tpm.folder, "/", project_id, "_tpm.rds"))
         
         ## Release some memory
         rm(rse)
         gc()
+      } else {
+        stop("Null RSE object!")
       }
       
     } else {
@@ -99,16 +102,16 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
     }
     
     
-    ## 2. For each tissue within the current project, filter the RSE by its samples
+    ## 2. For each sample cluster within the current project, filter the downloaded RSE using the sample IDs
 
-    if ( !is.null(recount_tpm) && 
-         file.exists(paste0(results_folder_local, "/base_data/", project_id, "_samples_metadata.rds")) &&
-         file.exists(paste0(results_folder_local, "/base_data/", project_id, "_clusters_used.rds")) ) {
+    if (!is.null(recount_tpm) && 
+        file.exists(paste0(results_folder_local, "/base_data/", project_id, "_samples_metadata.rds")) &&
+        file.exists(paste0(results_folder_local, "/base_data/", project_id, "_clusters_used.rds"))) {
 
       metadata.info <- readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_samples_metadata.rds"))
       clusters_ID <- readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_clusters_used.rds")) %>% unique()
 
-      for ( cluster_id in clusters_ID ) {
+      for (cluster_id in clusters_ID) {
 
         # cluster_id <- clusters_ID[1]
         logger::log_info("Getting results for ", cluster_id)
@@ -124,8 +127,7 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
           dplyr::select(c("gene_id", all_of(cluster_samples)))
 
         ## Save results
-        saveRDS(object = recount_tpm_local,
-                file = paste0(results_folder_local_tpm, project_id, "_", cluster_id, "_tpm.rds"))
+        saveRDS(object = recount_tpm_local, file = paste0(results_folder_local_tpm, project_id, "_", cluster_id, "_tpm.rds"))
 
         rm(recount_tpm_local)
         rm(cluster_samples)
@@ -162,8 +164,7 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
         recount_tpm_local %>% head %>% logger::log_info()
 
         ## Save results
-        saveRDS(object = recount_tpm_local,
-                file = paste0(results_folder_local_tpm, project_id, "_", cluster_id, "_tpm.rds"))
+        saveRDS(object = recount_tpm_local, file = paste0(results_folder_local_tpm, project_id, "_", cluster_id, "_tpm.rds"))
 
         rm(recount_tpm_local)
         rm(cluster_samples)

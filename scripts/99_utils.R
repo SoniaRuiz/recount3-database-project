@@ -5,7 +5,7 @@
 #' @return Junctions bigger than 25bp.
 #' @export
 RemoveShortJunctions <- function(input.SR.details) {
-  logger::log_info("\t\t Removing junctions shorter than 25bp.")
+  logger::log_info("Removing junctions shorter than 25bp...")
   output_SR_details <- input.SR.details %>%
     dplyr::filter(width >= 25)
   
@@ -25,16 +25,14 @@ RemoveShortJunctions <- function(input.SR.details) {
 RemoveEncodeBlacklistRegions <- function(GRdata, blacklist.path) {
   
   
-  if (!exists("encode_blacklist_hg38")) {
-    encode_blacklist_hg38 <- rtracklayer::import(con = blacklist.path) %>% diffloop::rmchr()
-  } else {
-    print("'encode_blacklist_hg38' file already loaded!")
+  if (file.exists(blacklist.path)) {
+    encode_blacklist_hg38 <- rtracklayer::import(con = blacklist.path) 
+    } else {
+    stop(blacklist.path, " does not exist!")
   }
   
-  overlaped_junctions <- GenomicRanges::findOverlaps(query = encode_blacklist_hg38, 
-                                                     subject = GRdata %>% diffloop::rmchr(),
-                                                     type = "any",
-                                                     ignore.strand = F)
+  overlaped_junctions <- GenomicRanges::findOverlaps(query = encode_blacklist_hg38, subject = GRdata,
+                                                     type = "any", ignore.strand = F)
   
   ## JuncID indexes to be removed: they overlap with a black region
   indexes <- S4Vectors::subjectHits(overlaped_junctions)
@@ -62,11 +60,11 @@ RemoveEncodeBlacklistRegions <- function(GRdata, blacklist.path) {
 #' @export
 LoadEdb <- function(gtf.path) {
   if (!exists("edb")) {
-    logger::log_info("\t\t Loading the reference genome.")
+    logger::log_info("Loading the reference genome.")
     edb <<- ensembldb::ensDbFromGtf(gtf.path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
     edb <<- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
   } else {
-    logger::log_info("\t\t Variable 'edb' already loaded!")
+    logger::log_info("Variable 'edb' already loaded!")
   }
   return(edb)
 }
@@ -80,7 +78,7 @@ LoadEdb <- function(gtf.path) {
 #' @return Annotated input by dasper.
 #' @export 
 AnnotateDasper <- function(GRdata, edb) {
-  logger::log_info("\t\t Annotating using dasper::junction_annot().")
+  logger::log_info("Annotating using dasper::junction_annot().")
   GRdata <- dasper::junction_annot(GRdata,
                                    ref = edb,
                                    ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"),
@@ -99,7 +97,7 @@ AnnotateDasper <- function(GRdata, edb) {
 #' @export
 RemoveUncategorizedJunctions <- function(input.SR.details) {
   
-  logger::log_info("\t\t Removing split reads not classified as 'annotated', 'novel_donor', 'novel_acceptor', 'novel combo' or 'novel exon skip' ...")
+  logger::log_info("Removing split reads not classified as 'annotated', 'novel_donor', 'novel_acceptor', 'novel combo' or 'novel exon skip' ...")
 
   ## Subset columns
   input.SR.details <- input.SR.details %>% 
@@ -122,25 +120,23 @@ RemoveUncategorizedJunctions <- function(input.SR.details) {
 #'
 #' @return Junctions assigned to only one gene.
 #' @export
-RemoveAmbiguousJunctions <- function(input_SR_details, database.folder) {
+RemoveAmbiguousJunctions <- function(input.SR.details, database.folder) {
   
-  logger::log_info("\t\t Removing junctions associated to more than one gene.")
+  logger::log_info("Removing junctions associated to more than one gene.")
 
-  
-  input_SR_details <- input_SR_details %>%
+  input.SR.details <- input.SR.details %>%
     as_tibble() %>%
     distinct(junID, .keep_all = T) %>% 
     rowwise() %>%
     mutate(ambiguous = ifelse(gene_id_junction %>% unlist() %>% length() > 1, T, F))
   
-  ambiguous_introns <- input_SR_details %>% dplyr::filter(ambiguous == T)
+  ambiguous_introns <- input.SR.details %>% dplyr::filter(ambiguous == T)
   
-  logger::log_info("\t\t Removing ", nrow(ambiguous_introns)," ambiguous junctions!")
+  logger::log_info("Removing ", nrow(ambiguous_introns)," ambiguous junctions!")
   
   saveRDS(object = ambiguous_introns, file = file.path(database.folder, "all_ambiguous_jxn.rds"))
   
-  return(input_SR_details %>%
-           filter(ambiguous == F))
+  return(input.SR.details %>% filter(ambiguous == F))
   
 }
 
