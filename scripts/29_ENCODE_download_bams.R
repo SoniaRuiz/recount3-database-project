@@ -202,6 +202,7 @@ DownloadExtractBamFiles <- function(RBP.metadata,
   
   ## Only download BAM files for the samples not yet downloaded and junction extracted
   RBPs_BAM_to_download <- CheckBAMFilesToDownload(RBP.metadata, RBP.path)
+  
   if (nrow(RBPs_BAM_to_download) > 0) {
     
     logger::log_info("Starting the download process....")
@@ -241,7 +242,6 @@ DownloadExtractBamFiles <- function(RBP.metadata,
     invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
   }
   
-  
   RBPs_jxn_to_extract <- CheckJxnFilesToExtract(RBP.metadata, RBP.path) %>% arrange(sample_id)
   if (nrow(RBPs_jxn_to_extract) > 0) {
     
@@ -265,60 +265,53 @@ DownloadExtractBamFiles <- function(RBP.metadata,
       sort_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort")
       junc_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort.s0.junc")
 
-      ## Download the BAM file
-      logger::log_info("Starting sorting process of sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")")
-      
       if (!file.exists(file_path)) { stop(".bam file does not exist!")}
       
       ## Writing of the script.
       tryCatch(
         {
           ## Sort the BAM file using samtools
-          system2(command = paste0(samtools.path, "samtools"), args = c(
+          logger::log_info("Starting sorting process of sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")")
+          system2(command = file.path(samtools.path, "samtools"), args = c(
             "sort", file_path,
             "-o", sort_path,
             "--threads", samtools.threads,
             "-m", samtools.memory
           ))
           
-          #if(!file.exists(sort_path)) stop("Sorting failed")
+          if(!file.exists(sort_path)) stop("Sorting failed")
           
-          logger::log_info("Starting the indexing process.")
-          system2(command = paste0(samtools.path, "samtools"), args = c(
+          logger::log_info("Starting the indexing process...")
+          system2(command = file.path(samtools.path, "samtools"), args = c(
             "index", sort_path,
             "-@", samtools.threads
           ))
           
-          #if(!file.exists(sort_path)) stop("Sorting failed")
+          if(!file.exists(sort_path)) stop("Indexing failed")
           
           logger::log_info("Starting the junction extraction process...")
-          system2(command = paste0(regtools.path, "regtools"), args = c(
+          system2(command = file.path(regtools.path, "regtools"), args = c(
             "junctions extract", sort_path,
             "-m 25",
             "-M 1000000",
             "-s XS",
             "-o", junc_path
           ))
-          
+
         },
         error = function(e) message("Error: ", e)
       )
       
-      
-      
-      ## Remove the files that are not necessary
-      # system2(command = "rm", args = c(file_path))
-      # system2(command = "rm", args = c(sort_path))
-      # system2(command = "rm", args = c(paste0(sort_path, ".bai")))
-      
-      if(!file.exists(junc_path)){
-        return(c(
-          paste0("Error extracting sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")", "."),
-          paste0("Removing all intermediary files. Please run the analysis again.")
-        ))
-      }else{
-        return(paste0("Successfully extracted the junctions. Removing all intermediary files (BAM included)."))
+      if (!file.exists(junc_path)) {
+        return(c(paste0("Error extracting sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")", ".")))
+      } else {
+        ## Remove the files that are not necessary
+        system2(command = "rm", args = c(file_path))
+        system2(command = "rm", args = c(sort_path))
+        system2(command = "rm", args = c(paste0(sort_path, ".bai")))
+        return(paste0("Successfully extracted the junctions. All intermediary files (BAM included) removed!"))
       }
+      
     }
     ## Stop the parallel cluster
     parallel::stopCluster(cl)

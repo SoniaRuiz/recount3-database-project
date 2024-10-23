@@ -13,6 +13,8 @@ library(rtracklayer)
 #'
 #' @examples
 GenerateCdtsPhastconsScores <- function(dependencies.folder,
+                                        phastcons.bw.path,
+                                        cdts.bw.path,
                                         db.introns = NULL,
                                         cluster = NULL,
                                         folder.name = NULL,
@@ -38,10 +40,8 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
       
       logger::log_info("PhastCons", p_type, "...")
       
-      bw_path = paste0(dependencies.folder, "/hg38.phastCons", p_type, "way.bw")
-      
-      if (!file.exists(bw_path)) {
-        stop("PhastCons file '", bw_path, "' does not exist!") %>% logger::log_info()
+      if (!file.exists(phastcons.bw.path)) {
+        stop("PhastCons file '", phastcons.bw.path, "' does not exist!") %>% logger::log_info()
       }
         
       # i_size <- 35
@@ -54,9 +54,9 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
                                                     end = db.introns %>% start() + i_size),
                                    strand = db.introns %>% strand())
       
-      values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
+      values(gr) <- DataFrame(junID = (db.introns) %>% as.character())
       
-      phastCons_5ss <- get_conservation_score_for_regions_bw(bw_path, gr, summaryFun = "mean") %>% as_tibble() %>%
+      phastCons_5ss <- GetConservationScoreForRegionsBW(phastcons.bw.path, gr, summaryFun = "mean") %>% as_tibble() %>%
         dplyr::rename_with(.fn = ~paste0(., "5ss_", i_size), .cols = paste0("mean_phastCons", p_type, "way"))
       
       
@@ -68,7 +68,8 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
                                                     end = db.introns %>% end()),
                                    strand = db.introns %>% strand)
       values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
-      phastCons_3ss <- get_conservation_score_for_regions_bw(bw_path = bw_path,
+      
+      phastCons_3ss <- GetConservationScoreForRegionsBW(bw_path = phastcons.bw.path,
                                                              gr = gr, 
                                                              summaryFun = "mean") %>% 
         as_tibble()  %>%
@@ -101,9 +102,9 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
     # CDTS score value
     
 
-    bw_path = file.path(dependencies.folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw")
-    if (!file.exists(bw_path)) {
-      stop("Constraint file '", bw_path, "' does not exist!") %>% logger::log_info()
+    
+    if (!file.exists(cdts.bw.path)) {
+      stop("Constraint file '", cdts.bw.path, "' does not exist!") %>% logger::log_info()
     }
 
 
@@ -114,7 +115,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
                                                   end = db.introns %>% start() + i_size),
                                  strand = db.introns %>% strand)
     values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
-    CDTS_5ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
+    CDTS_5ss <- GetConstraintScoreForRegionsBW(bw_path = cdts.bw.path,
                                                     gr = gr,
                                                     summaryFun = "mean") %>%
       as_tibble() %>%
@@ -129,7 +130,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
                                  ranges = IRanges(start = db.introns %>% end() - i_size,
                                                   end = db.introns %>% end()))
     values(gr) <- DataFrame(junID = (db.introns) %>% as.character() )
-    CDTS_3ss <- get_constraint_score_for_regions_bw(bw_path = bw_path,
+    CDTS_3ss <- GetConstraintScoreForRegionsBW(bw_path = cdts.bw.path,
                                                     gr = gr,
                                                     summaryFun = "mean") %>%
       as_tibble()  %>%
@@ -173,7 +174,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
 
 # Functions -------------------------------------------------------------------------------------------
 
-get_conservation_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "mean"){
+GetConservationScoreForRegionsBW <- function(bw_path, gr, summaryFun  = "mean"){
   
   BigWigFile <- BigWigFile(bw_path)
   
@@ -191,7 +192,7 @@ get_conservation_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "me
   
 }
 
-get_constraint_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "mean"){
+GetConstraintScoreForRegionsBW <- function(bw_path, gr, summaryFun  = "mean"){
   
   BigWigFile <- BigWigFile(bw_path)
   
@@ -216,7 +217,7 @@ get_constraint_score_for_regions_bw <- function(bw_path, gr, summaryFun  = "mean
 #
 # system.time(
 #
-#   bw_method <- get_conservation_score_for_regions_bw(bw_path = "/data/conservation/phastCons/hg38.phastCons7way.bw",
+#   bw_method <- GetConservationScoreForRegionsBW(bw_path = "/data/conservation/phastCons/hg38.phastCons7way.bw",
 #                                                      gr = gr, summaryFun = "mean")
 # )
 #

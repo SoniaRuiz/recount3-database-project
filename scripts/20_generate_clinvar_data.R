@@ -38,7 +38,8 @@ AddClinvarData <- function(db.introns,
     GenerateClinvarData(dependencies.folder)
   } else {
     readRDS(file = paste0(dependencies.folder, "/clinvar_splicing_pathogenic.rds")) 
-  } %>% GenomicRanges::GRanges()
+  }
+  clinvar_gr <- clinvar_gr %>% GenomicRanges::GRanges()
   
   seqlevelsStyle(clinvar_gr) <- "UCSC"
   elementMetadata(clinvar_gr)[, "ID"] <- (clinvar_gr) %>% as.character()

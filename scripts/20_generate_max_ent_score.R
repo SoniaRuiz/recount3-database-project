@@ -14,8 +14,8 @@ GenerateMaxEntScore <- function(db.introns,
                                 bedtools.path,
                                 hs.fasta.path){
   
-  db.introns <- db.introns %>% dplyr::as_tibble()
   
+  db.introns <- db.introns %>% dplyr::as_tibble()
   db.introns$seqnames <- db.introns$seqnames %>% as.character()
   
   if (any(db.introns$seqnames == "M")) {

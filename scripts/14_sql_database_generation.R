@@ -19,8 +19,13 @@ SqlDatabaseGeneration <- function(database.path,
                                   results.folder,
                                   dependencies.folder,
                                   gtf.version,
-                                  discard.minor.introns = F, 
-                                  remove.all = NULL) {
+                                  max.ent.tool.path,
+                                  bedtools.path,
+                                  hs.fasta.path,
+                                  phastcons.bw.path,
+                                  cdts.bw.path, 
+                                  remove.all = NULL,
+                                  discard.minor.introns = F) {
   
   
   print(paste0(Sys.time(), " --> ", database.path, "..."))
@@ -30,7 +35,7 @@ SqlDatabaseGeneration <- function(database.path,
   
   #logger::log_info("Database tables:",paste0(tables %>% print()))
 
-  if (!is.null(remove.all)) {
+  if (!is.null(remove.all) && remove.all) {
     SqlRemoveTables(database.path, all = remove.all, con)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
@@ -39,13 +44,18 @@ SqlDatabaseGeneration <- function(database.path,
   
   if (!any(tables %in% c('metadata', 'intron', 'novel', 'gene', 'transcript', 'combo'))) {
     
-    logger::log_info("\t Creating master tables ...")
+    logger::log_info("Creating master tables ...")
     SqlCreateMasterTables(database.path = database.path,
                           gtf.version = gtf.version,
                           database.folder = database.folder,
                           results.folder = results.folder,
                           dependencies.folder = dependencies.folder,
                           recount3.project.IDs = recount3.project.IDs,
+                          max.ent.tool.path,
+                          bedtools.path,
+                          hs.fasta.path,
+                          phastcons.bw.path,
+                          cdts.bw.path, 
                           discard.minor.introns = discard.minor.introns)
     
     

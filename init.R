@@ -38,13 +38,16 @@ args <-
     gtf_version = gtf_version,
     database_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/database", project_name, gtf_version),
     results_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", project_name, gtf_version),
-    tpm_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", project_name, "tpm")
+    tpm_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", project_name, "tpm"),
+    logs_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/logs")
+    
   )
 
 
 dir.create(path = args$database_folder, recursive = T, showWarnings = F)
 dir.create(path = args$results_folder, recursive = T, showWarnings = F)
 dir.create(path = args$tpm_folder, recursive = T, showWarnings = F)
+dir.create(path = args$logs_folder, recursive = T, showWarnings = F)
 
 
 ## Example other recount3 project identifiers
@@ -88,7 +91,7 @@ sapply(file.path(args$base_folder,"scripts", files.sources), source)
 ## INIT LOGS
 #####################################
 
-log_file <- here::here(paste0("logs/Splicing_Database_Generation_",project_name,".log"))
+log_file <- here::here(file.path(args$logs_folder, paste0("Splicing_Database_Generation_",project_name,".log")))
 logger::log_appender(logger::appender_tee(log_file, append = T))
 logger_layout <- logger::layout_glue_generator(format = '[{time}] [{level}] {msg}')
 logger::log_layout(logger_layout)
@@ -153,6 +156,10 @@ logger::log_layout(logger_layout)
   #                          results.folder = args$results_folder,
   #                          num.cores = 8)
 
+  # GetAllRawNovelCombos(recount3.project.IDs = args$recount3_project_IDs,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder)
+
   #################################################
   ## DATA BASE
 
@@ -180,12 +187,17 @@ logger::log_layout(logger_layout)
   database_sqlite_path <- paste0(args$database_folder,  "/", project_name, ".sqlite")
 
   SqlDatabaseGeneration(database.path = database_sqlite_path,
-                        recount3.project.IDs = recount3_project_IDs_used,
-                        remove.all = T,
+                        gtf.version = args$gtf_version,
                         database.folder = args$database_folder,
                         results.folder = args$results_folder,
-                        gtf.version = args$gtf_version,
                         dependencies.folder = args$dependencies_folder,
+                        recount3.project.IDs = recount3_project_IDs_used,
+                        remove.all = T,
+                        max.ent.tool.path = paste0(dependencies.folder, "/fordownload/"),
+                        bedtools.path = file.path(dependencies.folder, "bedtools2/"),
+                        hs.fasta.path = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
+                        phastcons.bw.path = paste0(dependencies.folder, "/hg38.phastCons17way.bw"),
+                        cdts.bw.path = file.path(dependencies.folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
                         discard.minor.introns = T)
   
 #}

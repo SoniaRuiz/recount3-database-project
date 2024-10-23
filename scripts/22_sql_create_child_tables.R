@@ -79,7 +79,7 @@ SqlCreateChildTables <- function(database.path,
   ###########################
   
   
-  for ( project_id in recount3.project.IDs ) { 
+  for (project_id in recount3.project.IDs) { 
     
     # project_id <- recount3.project.IDs[1]
     # project_id <- recount3.project.IDs[2]
@@ -89,10 +89,7 @@ SqlCreateChildTables <- function(database.path,
     logger::log_info(" --> Initiating data process of '", project_id, "' ...")
     results_folder_local <- paste0(results.folder, "/", project_id, "/")
     
-    clusters <- master_metadata %>%
-      dplyr::filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
+    clusters <- master_metadata %>% dplyr::filter(SRA_project == project_id) %>% distinct(cluster) %>% pull()
     
     for (cluster_id in clusters) { 
       
@@ -100,8 +97,6 @@ SqlCreateChildTables <- function(database.path,
       # cluster_id <- clusters[3]
       
       logger::log_info(project_id, " --> ", cluster_id)
-      
-      
       
       ###############################
       ## PREPARE DATA
@@ -134,13 +129,11 @@ SqlCreateChildTables <- function(database.path,
                                                       cluster_id, "_raw_distances_tidy.rds")) %>% as_tibble()
         
         
-        if ( is.null(names(split_read_counts)) ) {
-          split_read_counts <- split_read_counts %>%
-            as_tibble(rownames = "junID")
+        if (is.null(names(split_read_counts))) {
+          split_read_counts <- split_read_counts %>% as_tibble(rownames = "junID")
         }
-        if ( !identical(names(split_read_counts)[-1] %>% sort(), samples %>% sort()) ) {
-          logger::log_info("The number of samples used does not correspond to the number of columns in the 'split_read_counts' object!")
-          break;
+        if (!identical(names(split_read_counts)[-1] %>% sort(), samples %>% sort())) {
+          stop("The number of samples used does not correspond to the number of columns in the 'split_read_counts' object!")
         }
         
         
@@ -151,14 +144,14 @@ SqlCreateChildTables <- function(database.path,
        
         
         ## Add total number of supporting split reads across samples to introns and novel junctions
-        df_local_intron_pairings_w_counts <- add_coverage_to_introns(df_cluster_distances, split_read_counts, samples)
-        df_local_novel_pairings_w_counts <- add_coverage_to_novel_jxn(df_cluster_distances, split_read_counts, samples)
+        df_local_intron_pairings_w_counts <- AddCoverageToIntrons(df_cluster_distances, split_read_counts, samples)
+        df_local_novel_pairings_w_counts <- AddCoverageToNovelJxn(df_cluster_distances, split_read_counts, samples)
 
         
         
         ## QC - remove star from IDs
-        df_local_intron_pairings_w_counts <- qc_replace_star_ID(db.introns = df_local_intron_pairings_w_counts)
-        df_local_novel_pairings_w_counts <- qc_replace_star_ID(db.introns = df_local_novel_pairings_w_counts)
+        df_local_intron_pairings_w_counts <- QCReplaceStarID(db.introns = df_local_intron_pairings_w_counts)
+        df_local_novel_pairings_w_counts <- QCReplaceStarID(db.introns = df_local_novel_pairings_w_counts)
        
         
         
@@ -215,10 +208,6 @@ SqlCreateChildTables <- function(database.path,
           dplyr::rename(novel_junID = novel_junID.y) %>%
           dplyr::relocate(ref_junID, novel_junID)
         
-        
-        
-        # logger::log_info(df_local_intron_w_novel_pairings_w_master %>% nrow(), " non-ambiguous junction pairings to be stored... ")
-       
         
         if (setdiff(df_local_intron_w_novel_pairings_w_master$ref_coordinates, master_intron$ref_coordinates) %>% length() > 0) {
           stop(paste0("ERROR! Some introns detected in '", cluster_id, "' are not stored in the master intron table."))
@@ -310,7 +299,7 @@ SqlCreateChildTables <- function(database.path,
         #####################################
         
         
-        df_local_pairings_w_master_w_MSR <- add_MSR_measures(db.introns = df_local_intron_w_novel_pairings_w_master)
+        df_local_pairings_w_master_w_MSR <- AddMSRMeasures(db.introns = df_local_intron_w_novel_pairings_w_master)
         
         
         #####################################
@@ -318,10 +307,10 @@ SqlCreateChildTables <- function(database.path,
         #####################################
         
         
-        df_local_pairings_w_master_w_MSR_w_TPM <- add_median_TPM_values(results.folder = results.folder, cluster.samples = samples, 
-                                                                        master.gene = master_gene, master.transcript = master_transcript,
-                                                                        project.id = project_id, cluster.id = cluster_id, 
-                                                                        db.introns = df_local_pairings_w_master_w_MSR)
+        df_local_pairings_w_master_w_MSR_w_TPM <- AddMedianTPMValues(results.folder = results.folder, cluster.samples = samples, 
+                                                                     master.gene = master_gene, master.transcript = master_transcript,
+                                                                     project.id = project_id, cluster.id = cluster_id, 
+                                                                     db.introns = df_local_pairings_w_master_w_MSR)
         
         
         #####################################
@@ -329,7 +318,7 @@ SqlCreateChildTables <- function(database.path,
         #####################################
         
         
-        df_local_pairings_w_master_w_MSR_w_TPM <- add_intron_category(db.introns = df_local_pairings_w_master_w_MSR_w_TPM)
+        df_local_pairings_w_master_w_MSR_w_TPM <- AddIntronCategory(db.introns = df_local_pairings_w_master_w_MSR_w_TPM)
         
         
         
@@ -341,10 +330,11 @@ SqlCreateChildTables <- function(database.path,
         db_introns_final <- df_local_pairings_w_master_w_MSR_w_TPM %>% dplyr::select(-novel_acceptor,-novel_donor,-ref_coordinates)%>%
           dplyr::rename(MSR_D = MSR_Donor, MSR_A = MSR_Acceptor)
         
-        create_and_populate_misspliced_child_table(database.path, 
-                                                   cluster.id = cluster_id, 
-                                                   project.id = project_id, 
-                                                   db.introns.final = db_introns_final)
+        
+        CreateAndPopulateMissplicedChildTable(database.path, 
+                                              cluster.id = cluster_id, 
+                                              project.id = project_id, 
+                                              db.introns.final = db_introns_final)
         
         
 
@@ -361,13 +351,11 @@ SqlCreateChildTables <- function(database.path,
         df_non_paired_introns <- readRDS(file = paste0(results_folder_local, "/junction_pairing/", cluster_id, "/not-misspliced/", 
                                                        cluster_id, "_all_misspliced_not_paired.rds"))
         never_additional_introns <- intersect(master_intron$ref_coordinates, df_non_paired_introns)
-        logger::log_info("Additional never introns to be added: ", 
-                         never_additional_introns %>% unique %>% length())
+        logger::log_info("Additional never introns to be added: ", never_additional_introns %>% unique %>% length())
         
         
         ## TYPE 'MAYBE'
-        never_additional_introns <- data.frame(ref_junID = never_additional_introns) %>% 
-          as_tibble() %>%
+        never_additional_introns <- data.frame(ref_junID = never_additional_introns) %>% as_tibble() %>%
           mutate(ref_type = "maybe")
         
         logger::log_info(never_additional_introns %>% distinct(ref_junID) %>% nrow(), " non-paried introns passing QC - type 'maybe'.")
@@ -414,9 +402,9 @@ SqlCreateChildTables <- function(database.path,
         
         
         
-        split_read_counts_intron_never <- generate_coverage(split_read_counts = split_read_counts,
-                                                            samples = samples,
-                                                            junID = df_introns_never$ref_junID) %>%
+        split_read_counts_intron_never <- GenerateCoverage(split.read.counts = split_read_counts,
+                                                           samples = samples,
+                                                           junID = df_introns_never$ref_junID) %>%
           dplyr::rename(ref_n_individuals = n_individuals, ref_sum_counts = sum_counts) 
         
         
@@ -485,13 +473,13 @@ SqlCreateChildTables <- function(database.path,
         ## ADD GENE TPM
         #####################################
 
-        db_never_introns_final <- add_median_TPM_values(results.folder = results.folder, 
-                                                        cluster.samples = samples,
-                                                        master.gene = master_gene,
-                                                        master.transcript = master_transcript,
-                                                        project.id = project_id, 
-                                                        cluster.id = cluster_id, 
-                                                        db.introns = db_never_introns_final)
+        db_never_introns_final <- AddMedianTPMValues(results.folder = results.folder, 
+                                                     cluster.samples = samples,
+                                                     master.gene = master_gene,
+                                                     master.transcript = master_transcript,
+                                                     project.id = project_id, 
+                                                     cluster.id = cluster_id, 
+                                                     db.introns = db_never_introns_final)
         
         #####################################
         ## QC
@@ -528,13 +516,10 @@ SqlCreateChildTables <- function(database.path,
         ## CREATE AND POPULATE CHILD 'NEVER MIS-SPLICED' INTRON TABLE
         #############################################################
         
-        create_and_populate_never_misspliced_child_table(database.path, 
-                                                         cluster.id = cluster_id, 
-                                                         project.id = project_id, 
-                                                         db.introns.final = db_never_introns_final)
-
-          
-        
+        CreateAndPopulateMissplicedChildTable(database.path, 
+                                              cluster.id = cluster_id, 
+                                              project.id = project_id, 
+                                              db.introns.final = db_never_introns_final)
         
         rm(list = ls())
         gc()
@@ -594,7 +579,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
     
     for (cluster_id in clusters) { 
       
-      # cluster_id <- clusters[1]
+      # cluster_id <- clusters[2]
       
       logger::log_info(project_id, " --> ", cluster_id)
       
@@ -602,8 +587,8 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
       ## PREPARE DATA
       ###############################
       
-      if ( file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
-           file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds")) ) {  
+      if (file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
+          file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds"))) {  
         
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds"))
@@ -627,9 +612,12 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
         
         split_read_counts_w_coverage %>% head()
         
+        
         ## Merge counts and split reads from novel combos
         split_read_counts_all_details <- split_read_counts_w_coverage %>%
-          inner_join(y = master_combo, by = c("junID" = "ref_coordinates"))
+          inner_join(y = master_combo, by = c("junID" = "ref_coordinates")) %>%
+          dplyr::relocate(ref_junID)
+        
         
         #####################################
         ## AD GENE TPM
@@ -641,19 +629,16 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
           
           tpm <- readRDS(file = paste0(results.folder,  "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
             dplyr::select(gene_id, all_of(samples))
-          
-          tpm <- tpm  %>%
+          tpm <- tpm %>%
             dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-            dplyr::select(gene_id, tpm_median) 
+            dplyr::select(gene_id, tpm_median) %>%
+            ## In case there are any duplicates, take the genes with the maximum tpms
+            distinct(gene_id, .keep_all = T) %>% 
+            group_by(gene_id) %>% 
+            summarize_all(max) %>% 
+            ungroup()
           
-          ## In case there are any duplicates, take the genes with the maximum tpms
-          tpm <- tpm %>% distinct(gene_id, .keep_all = T) %>% group_by(gene_id) %>% 
-            summarize_all(max) %>% ungroup()
-          
-          tpm %>% as_tibble()
-          
-          
-          tpm_tidy <- tpm %>%
+          tpm_w_transcript <- tpm %>%
             inner_join(y = master_gene %>% as_tibble(),
                        by = c("gene_id" = "gene_id")) %>%
             inner_join(y = master_transcript %>% as_tibble(),
@@ -662,17 +647,15 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
             dplyr::select(transcript_id = id.y, 
                           tpm_median)
           
-          tpm_w_intron <- tpm_tidy %>%
-            left_join(y = bridge_combo_transcript %>% dplyr::select(intron_id, transcript_id),
-                      by = "transcript_id") %>%
-            drop_na()
+          tpm_w_intron <- tpm_w_transcript %>%
+            left_join(y = bridge_combo_transcript %>% dplyr::select(ref_junID, transcript_id),
+                      by = "transcript_id") %>% drop_na()
           
           rm(tpm)
-          rm(tpm_tidy)
+          rm(tpm_w_transcript)
           
           split_read_counts_all_details_tidy <- split_read_counts_all_details %>%
-            left_join(y = tpm_w_intron,
-                      by = c("ref_junID" = "intron_id")) %>% 
+            left_join(y = tpm_w_intron, by = "ref_junID") %>% 
             dplyr::rename(gene_tpm = tpm_median)
           
         } else {
@@ -743,7 +726,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
         
       } else {
         DBI::dbDisconnect(conn = con) 
-        logger::log_info("Dependency files do not exist! '", cluster_id, "_", project_id, "'!")
+        stop("Dependency files do not exist! '", cluster_id, "_", project_id, "'!")
       }
     }
     gc()
@@ -824,7 +807,7 @@ SqlCreateBridgeTablewMetadata <- function(db.intron,
 
 
 
-add_coverage_to_introns <- function(df_cluster_distances, split_read_counts, samples) {
+AddCoverageToIntrons <- function(df_cluster_distances, split_read_counts, samples) {
   
   ## 1. Obtain unique INTRONS from the pairings
   df_local_intron_pairings <- df_cluster_distances %>%
@@ -837,9 +820,9 @@ add_coverage_to_introns <- function(df_cluster_distances, split_read_counts, sam
   
   
   ## Add coverage detected for the introns in the current tissue
-  split_read_counts_intron <- generate_coverage(split_read_counts = split_read_counts,
-                                                samples = samples,
-                                                junIDs = df_local_intron_pairings$ref_junID) %>%
+  split_read_counts_intron <- GenerateCoverage(split.read.counts = split_read_counts,
+                                               samples = samples,
+                                               junIDs = df_local_intron_pairings$ref_junID) %>%
     dplyr::rename(ref_n_individuals = n_individuals,
                   ref_sum_counts = sum_counts) %>% as_tibble()
   split_read_counts_intron %>% head()
@@ -851,7 +834,7 @@ add_coverage_to_introns <- function(df_cluster_distances, split_read_counts, sam
     return()
 }
 
-add_coverage_to_novel_jxn <- function(df_cluster_distances, split_read_counts, samples) {
+AddCoverageToNovelJxn <- function(df_cluster_distances, split_read_counts, samples) {
 
   ## Obtain NOVEL JUNCTIONS from the pairings
   df_local_novel_pairings <- df_cluster_distances %>%
@@ -864,9 +847,9 @@ add_coverage_to_novel_jxn <- function(df_cluster_distances, split_read_counts, s
                   strand = novel_strand)
   
   ## Add coverage detected for the introns in the current tissue
-  split_read_counts_novel <- generate_coverage(split_read_counts = split_read_counts,
-                                               samples = samples,
-                                               junID = df_local_novel_pairings$novel_junID) %>%
+  split_read_counts_novel <- GenerateCoverage(split.read.counts = split_read_counts,
+                                              samples = samples,
+                                              junID = df_local_novel_pairings$novel_junID) %>%
     dplyr::rename(novel_n_individuals = n_individuals,
                   novel_sum_counts = sum_counts) %>% as_tibble()
   df_local_novel_pairings_w_counts <- df_local_novel_pairings %>%
@@ -879,7 +862,7 @@ add_coverage_to_novel_jxn <- function(df_cluster_distances, split_read_counts, s
 
 }
 
-qc_replace_star_ID <- function(db.introns) {
+QCReplaceStarID <- function(db.introns) {
   
   
   if ( any(names(db.introns) == "ref_junID") ) {
@@ -902,7 +885,7 @@ qc_replace_star_ID <- function(db.introns) {
   return(db.introns)
 }
 
-add_MSR_measures <- function(db.introns) {
+AddMSRMeasures <- function(db.introns) {
   
   logger::log_info("calculating MSR measures ... ")
   
@@ -925,7 +908,7 @@ add_MSR_measures <- function(db.introns) {
     return()
 }
 
-add_median_TPM_values <- function(results.folder, cluster.samples, master.gene, master.transcript, project.id, cluster.id, db.introns) {
+AddMedianTPMValues <- function(results.folder, cluster.samples, master.gene, master.transcript, project.id, cluster.id, db.introns) {
   
   if ( file.exists( paste0(results.folder, "/", project.id, "/tpm/", project.id, "_", cluster.id, "_tpm.rds")) ) {
     
@@ -969,7 +952,7 @@ add_median_TPM_values <- function(results.folder, cluster.samples, master.gene, 
   return(db.introns)
 }
 
-add_intron_category <- function(db.introns) {
+AddIntronCategory <- function(db.introns) {
   
   db.introns[, "ref_type"] <- ""
   db.introns %>% head()
@@ -999,7 +982,7 @@ add_intron_category <- function(db.introns) {
     return()
 }
 
-create_and_populate_misspliced_child_table <- function(database.path, cluster.id, project.id, db.introns.final) {
+CreateAndPopulateMissplicedChildTable <- function(database.path, cluster.id, project.id, db.introns.final) {
   
   logger::log_info( "creating 'mis-spliced' table ... ")
   
@@ -1045,7 +1028,7 @@ create_and_populate_misspliced_child_table <- function(database.path, cluster.id
   
 }
 
-create_and_populate_never_misspliced_child_table <- function(database.path, cluster.id, project.id, db.introns.final){
+CreateAndPopulateMissplicedChildTable <- function(database.path, cluster.id, project.id, db.introns.final){
   
   query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster.id, "_", project.id, "_nevermisspliced"), "'", 
                   "(ref_junID INTEGER NOT NULL,

@@ -105,3 +105,38 @@ GetAllRawJxnPairings <- function(recount3.project.IDs,
           file = file.path(database.folder,"/all_raw_jxn_pairings.rds"))
   
 }
+
+
+GetAllRawNovelCombos <- function(recount3.project.IDs,
+                                 database.folder,
+                                 results.folder) {
+  
+  ## Get all novel combos across all tables
+  all_split_reads_combos <- map_df(recount3.project.IDs, function(project_id) { 
+    
+    # project_id <- recount3.project.IDs[1]
+    
+    logger::log_info("Working with '", project_id, "' ...")
+    results_folder_local <- paste0(results.folder, "/", project_id, "/")
+    
+    clusters <- readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_clusters_used.rds"))
+    
+    map_df(clusters, function(cluster_id) { 
+      
+      # cluster_id <- clusters[1]
+      logger::log_info(project_id, " --> ", cluster_id)
+      
+      if (file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds"))) {
+        
+        ## Load all split reads
+        readRDS(file = paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) %>%
+          dplyr::select(-any_of(c("in_ref","n_projects","annotated"))) %>%
+          unnest(gene_id)
+      }
+    })
+  })
+  
+  all_split_read_combos_RBPs <- all_split_reads_combos %>% distinct(junID, .keep_all = T) %>% dplyr::rename(ref_junID = junID)
+  
+  saveRDS(object = all_split_read_combos_RBPs, file = file.path(database.folder, "all_novel_combos.rds"))
+}
