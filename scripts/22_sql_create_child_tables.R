@@ -1,9 +1,31 @@
 
+SqlCreateChildTables <- function(database.sqlite,
+                                 database.folder,
+                                 results.folder,
+                                 recount3.project.IDs = NULL) {
+  
+  
+  # A) Create the child tables to store the paired alternative 5 and 3 ss 
+  
+  SqlCreateChildTableAlternative5ss3ss(database.sqlite,
+                                       database.folder,
+                                       results.folder,
+                                       recount3.project.IDs)
+  
+  
+  
+  # B) Create the child tables to store the novel combo jxn
+  
+  SqlCreateChildTableCombo(recount3.project.IDs,
+                           database.sqlite,
+                           results.folder)
+  
+}
 #' Title
 #' Creates two 'child' SQLITE tables per sample cluster to store i) the annotated introns that do not have evidence for mis-splicing activity 
 #' (never-misspliced table) and the ii) annotated introns with evidence of mis-splicing at their donor or acceptor splice sites.
 #' These are referred to as 'child' tables because they inherit information from the 'intron' and 'novel' master tables
-#' @param database.path Local path to the .sqlite database
+#' @param database.sqlite Local path to the .sqlite database
 #' @param recount3.project.IDs Vector with the ID of the recount3 projects to work with
 #' @param database.folder Local path to the folder that contains the database
 #' @param results.folder Local path to the folder that contains the result files
@@ -12,10 +34,10 @@
 #' @export
 #'
 #' @examples
-SqlCreateChildTables <- function(database.path,
-                                 database.folder,
-                                 results.folder,
-                                 recount3.project.IDs = NULL) {
+SqlCreateChildTableAlternative5ss3ss <- function(database.sqlite,
+                                                 database.folder,
+                                                 results.folder,
+                                                 recount3.project.IDs = NULL) {
   
   
   ###########################
@@ -33,7 +55,7 @@ SqlCreateChildTables <- function(database.path,
   ## QUERY MASTER TABLES
   ###########################
   
-  con <- dbConnect(RSQLite::SQLite(), database.path)
+  con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   tables <- DBI::dbListTables(conn = con)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
   
@@ -44,7 +66,7 @@ SqlCreateChildTables <- function(database.path,
   master_metadata <- dbGetQuery(con, paste0("SELECT * FROM 'metadata'")) 
   
   ## GET FROM INTRON TABLE
-  query = paste0("SELECT ref_junID, ref_coordinates, transcript_id, misspliced FROM 'intron'")
+  query = paste0("SELECT ref_junID, ref_coordinates, misspliced FROM 'intron'")
   master_intron <- dbGetQuery(con, query) %>% as_tibble()
   
   ## GET FROM NOVEL JUNCTION TABLE
@@ -61,9 +83,12 @@ SqlCreateChildTables <- function(database.path,
   ## GET FROM TRANSCRIPT TABLE
   master_transcript <- dbGetQuery(con, paste0("SELECT * FROM 'transcript'")) %>% as_tibble()
   
+  ## GET info from introns:transcripts (N:N relationship)
+  bridge_intron_transcript <- dbGetQuery(con, paste0("SELECT * FROM 'bridge_intron_transcript'")) %>% as_tibble()
+  
   DBI::dbDisconnect(conn = con) 
   
-  if ( is.null(recount3.project.IDs) ){
+  if (is.null(recount3.project.IDs)) {
     recount3.project.IDs <- (master_metadata$SRA_project %>% unique())
   }
   
@@ -82,9 +107,6 @@ SqlCreateChildTables <- function(database.path,
   for (project_id in recount3.project.IDs) { 
     
     # project_id <- recount3.project.IDs[1]
-    # project_id <- recount3.project.IDs[2]
-    # project_id <- "LAML"
-    # project_id <- "COAD" 
     
     logger::log_info(" --> Initiating data process of '", project_id, "' ...")
     results_folder_local <- paste0(results.folder, "/", project_id, "/")
@@ -94,14 +116,13 @@ SqlCreateChildTables <- function(database.path,
     for (cluster_id in clusters) { 
       
       # cluster_id <- clusters[1]
-      # cluster_id <- clusters[3]
       
       logger::log_info(project_id, " --> ", cluster_id)
       
       ###############################
       ## PREPARE DATA
       ###############################
-      con <- dbConnect(RSQLite::SQLite(), database.path)
+      con <- dbConnect(RSQLite::SQLite(), database.sqlite)
       
       if ( !DBI::dbExistsTable(con, name = paste0(cluster_id, "_", project_id, "_misspliced")) &&
            !DBI::dbExistsTable(con, name = paste0(cluster_id, "_", project_id, "_nevermisspliced")) && 
@@ -114,7 +135,7 @@ SqlCreateChildTables <- function(database.path,
         ## LOAD BASE DATA ONLY FOR THE CURRENT CLUSTER ID 
         #########################################################
         
-        logger::log_info(cluster_id, " loading base data ... ")
+        logger::log_info("'", cluster_id, "' loading base data ... ")
         
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(results_folder_local, "/base_data/", 
@@ -156,7 +177,7 @@ SqlCreateChildTables <- function(database.path,
         
         
         ## Merge introns and novel junctions with the coverage data added
-        logger::log_info("merging introns and novel junctions ... ")
+        logger::log_info("Merging introns and novel junctions ... ")
         df_local_intron_w_novel_pairings <- df_local_novel_pairings_w_counts %>%
           dplyr::select(-c(seqnames, start, end, strand)) %>%
           inner_join(y = df_local_intron_pairings_w_counts %>% dplyr::select(-c(seqnames, start, end, strand)),
@@ -184,13 +205,11 @@ SqlCreateChildTables <- function(database.path,
         ## ADD FOREIGN KEY FROM THE MASTER TABLES
         ################################################
         
-        logger::log_info("adding MASTER INTRON foreign key... ")
+        logger::log_info("Adding MASTER INTRON foreign key... ")
         
         ## JOIN data with MASTER INTRON table
         df_local_intron_w_novel_pairings_w_master <- df_local_intron_w_novel_pairings %>% 
-          left_join(y = master_intron %>% 
-                      dplyr::filter(misspliced == "Yes") %>%
-                      dplyr::select(ref_junID, ref_coordinates, transcript_id),
+          left_join(y = master_intron %>% dplyr::filter(misspliced == "Yes") %>% dplyr::select(ref_junID, ref_coordinates),
                     by = c("ref_junID" = "ref_coordinates")) %>%
           dplyr::rename(ref_coordinates = ref_junID) %>%
           dplyr::rename(ref_junID = ref_junID.y) %>%
@@ -198,15 +217,15 @@ SqlCreateChildTables <- function(database.path,
         
         
         
-        logger::log_info("adding MASTER NOVEL foreign key... ")
+        logger::log_info("Adding MASTER NOVEL foreign key... ")
         
         df_local_intron_w_novel_pairings_w_master <- df_local_intron_w_novel_pairings_w_master %>% 
           inner_join(y = master_novel,
-                     by = c("novel_junID" = "novel_coordinates",
-                            "ref_junID" = "ref_junID")) %>%
+                     by = c("novel_junID" = "novel_coordinates", "ref_junID" = "ref_junID")) %>%
           dplyr::rename(novel_coordinates = novel_junID) %>%
           dplyr::rename(novel_junID = novel_junID.y) %>%
           dplyr::relocate(ref_junID, novel_junID)
+        
         
         
         if (setdiff(df_local_intron_w_novel_pairings_w_master$ref_coordinates, master_intron$ref_coordinates) %>% length() > 0) {
@@ -232,8 +251,7 @@ SqlCreateChildTables <- function(database.path,
         
         
         ## TYPE 'MAYBE'
-        introns_parent_ambigous <- data.frame(ref_junID = introns_parent_ambigous) %>% 
-          as_tibble() %>%
+        introns_parent_ambigous <- data.frame(ref_junID = introns_parent_ambigous) %>% as_tibble() %>%
           mutate(ref_type = "maybe")
         
         # missing_intron <- "chr1:155240078-155244505:-"
@@ -243,7 +261,8 @@ SqlCreateChildTables <- function(database.path,
         # df_local_novel_pairings_w_counts %>% filter(ref_junID == missing_intron)
         # introns_parent_ambigous %>% filter(ref_junID == missing_intron)
         
-        logger::log_info(introns_parent_ambigous %>% distinct(ref_junID) %>% nrow(), " introns parenting ambiguous novel junctions that also passed the QC...")
+        logger::log_info(introns_parent_ambigous %>% distinct(ref_junID) %>% nrow(), 
+                         " introns parenting ambiguous novel junctions that also passed the QC...")
         
         
         #######################################
@@ -251,22 +270,22 @@ SqlCreateChildTables <- function(database.path,
         #######################################
         
         
-        logger::log_info("checking integrity with parent tables ... ")
+        # logger::log_info("Checking integrity with parent tables ... ")
         
         df_local_novel <- master_novel %>%
           dplyr::filter(novel_junID %in% (df_local_intron_w_novel_pairings_w_master %>% pull(novel_junID))) %>% 
           dplyr::select(novel_coordinates) 
         
-        if ( !(identical(df_local_intron_w_novel_pairings_w_master$novel_coordinates %>% sort(), 
-                         df_local_novel$novel_coordinates %>% sort())) ) {
+        if (!(identical(df_local_intron_w_novel_pairings_w_master$novel_coordinates %>% sort(), 
+                         df_local_novel$novel_coordinates %>% sort()))) {
           
           stop("ERROR! Local mis-splicing tables and master novel table are not identical")
           
-          if ( all(intersect(setdiff(df_local_intron_w_novel_pairings_w_master$novel_coordinates, master_novel$novel_coordinates), ambiguous_novel_junc$novel_junID) == 
-                   setdiff(df_local_intron_w_novel_pairings_w_master$novel_coordinates, master_novel$novel_coordinates)) == T ) {
-            df_local_intron_w_novel_pairings_w_master <- df_local_intron_w_novel_pairings_w_master %>% as.data.table() %>%
-              dplyr::filter(!(novel_coordinates %in% ambiguous_novel_junc$novel_junID))
-          }
+          # if ( all(intersect(setdiff(df_local_intron_w_novel_pairings_w_master$novel_coordinates, master_novel$novel_coordinates), ambiguous_novel_junc$novel_junID) == 
+          #          setdiff(df_local_intron_w_novel_pairings_w_master$novel_coordinates, master_novel$novel_coordinates)) == T ) {
+          #   df_local_intron_w_novel_pairings_w_master <- df_local_intron_w_novel_pairings_w_master %>% as.data.table() %>%
+          #     dplyr::filter(!(novel_coordinates %in% ambiguous_novel_junc$novel_junID))
+          # }
           
         } 
         
@@ -280,16 +299,12 @@ SqlCreateChildTables <- function(database.path,
         df <- master_novel %>%
           dplyr::select(novel_junID, ref_junID) %>%
           arrange(novel_junID) %>% 
-          inner_join(df_local_intron_w_novel_pairings_w_master %>%
-                       dplyr::select(novel_junID, ref_junID) %>%
-                       arrange(novel_junID),
+          inner_join(df_local_intron_w_novel_pairings_w_master %>% dplyr::select(novel_junID, ref_junID) %>% arrange(novel_junID),
                      by = "novel_junID")
         
         diff <- df %>% dplyr::filter(ref_junID.x != ref_junID.y)
         
         if (diff %>% nrow() > 0) {
-          # df_local_intron_w_novel_pairings_w_master <- df_local_intron_w_novel_pairings_w_master %>%
-          #   dplyr::filter(!(ref_junID %in% diff$ref_junID.y)) 
           stop("ERROR!: ", diff, " --> mismatch junctions.")
         } 
    
@@ -307,10 +322,15 @@ SqlCreateChildTables <- function(database.path,
         #####################################
         
         
-        df_local_pairings_w_master_w_MSR_w_TPM <- AddMedianTPMValues(results.folder = results.folder, cluster.samples = samples, 
-                                                                     master.gene = master_gene, master.transcript = master_transcript,
-                                                                     project.id = project_id, cluster.id = cluster_id, 
-                                                                     db.introns = df_local_pairings_w_master_w_MSR)
+        df_local_pairings_w_master_w_MSR_w_TPM <- AddMedianTPMValues(results.folder = results.folder, 
+                                                                     cluster.samples = samples, 
+                                                                     master.gene = master_gene, 
+                                                                     master.transcript = master_transcript,
+                                                                     bridge.transcript = bridge_intron_transcript,
+                                                                     project.id = project_id, 
+                                                                     cluster.id = cluster_id, 
+                                                                     db.introns = df_local_pairings_w_master_w_MSR) %>%
+          distinct(ref_junID, novel_junID, .keep_all=T)
         
         
         #####################################
@@ -331,7 +351,8 @@ SqlCreateChildTables <- function(database.path,
           dplyr::rename(MSR_D = MSR_Donor, MSR_A = MSR_Acceptor)
         
         
-        CreateAndPopulateMissplicedChildTable(database.path, 
+        
+        CreateAndPopulateMissplicedChildTable(database.sqlite, 
                                               cluster.id = cluster_id, 
                                               project.id = project_id, 
                                               db.introns.final = db_introns_final)
@@ -408,9 +429,9 @@ SqlCreateChildTables <- function(database.path,
           dplyr::rename(ref_n_individuals = n_individuals, ref_sum_counts = sum_counts) 
         
         
+        
         if (any(str_detect(split_read_counts_intron_never$junID,pattern = "\\*"))) {
-          logger::log_info("ERROR! some never mis-spliced junctions without the number of individuals")
-          break;
+          stop("ERROR! some never mis-spliced junctions without the number of individuals")
         }
         
         
@@ -426,12 +447,10 @@ SqlCreateChildTables <- function(database.path,
         
         ## QC
         if ( any(db_never_introns_final$ref_n_individuals %>% is.na()) ) {
-          logger::log_info("ERROR! some never mis-spliced junctions without the number of individuals")
-          break;
+          stop("ERROR! some never mis-spliced junctions without the number of individuals")
         }
         if (any(str_detect(db_never_introns_final$ref_junID, pattern = "\\*"))) {
-          logger::log_info("ERROR! * in the IDs")
-          break;
+          stop("ERROR! * in the IDs")
         }
       
         
@@ -446,15 +465,15 @@ SqlCreateChildTables <- function(database.path,
         ## ADD REFERENCE KEY TO THE MASTER INTRON TABLE 
         ##################################################
         
-        logger::log_info( "adding the intron reference key to the never mis-spliced introns ... ")
+        logger::log_info("Adding the intron reference key to the never mis-spliced introns ... ")
         
         db_never_introns_final <- db_never_introns_final %>%
-          inner_join(master_intron %>% dplyr::select(ref_junID, ref_coordinates, transcript_id),
+          inner_join(master_intron %>% dplyr::select(ref_junID, ref_coordinates),
                      by = c("ref_junID" = "ref_coordinates")) %>%
           dplyr::filter(!is.na(ref_junID)) %>%
           dplyr::select(-ref_junID) %>% 
           dplyr::rename(ref_junID = ref_junID.y) %>%
-          relocate(ref_junID)
+          dplyr::relocate(ref_junID)
         
         
         
@@ -479,7 +498,9 @@ SqlCreateChildTables <- function(database.path,
                                                      master.transcript = master_transcript,
                                                      project.id = project_id, 
                                                      cluster.id = cluster_id, 
-                                                     db.introns = db_never_introns_final)
+                                                     db.introns = db_never_introns_final,
+                                                     bridge.transcript = bridge_intron_transcript) %>%
+          distinct(ref_junID, .keep_all=T)
         
         #####################################
         ## QC
@@ -516,12 +537,12 @@ SqlCreateChildTables <- function(database.path,
         ## CREATE AND POPULATE CHILD 'NEVER MIS-SPLICED' INTRON TABLE
         #############################################################
         
-        CreateAndPopulateMissplicedChildTable(database.path, 
-                                              cluster.id = cluster_id, 
-                                              project.id = project_id, 
-                                              db.introns.final = db_never_introns_final)
+        CreateAndPopulateNeverMissplicedChildTable(database.sqlite = database.sqlite, 
+                                                   cluster.id = cluster_id, 
+                                                   project.id = project_id,
+                                                   db.introns.final = db_never_introns_final)
         
-        rm(list = ls())
+        #rm(list = ls())
         gc()
         
       } else {
@@ -540,11 +561,12 @@ SqlCreateChildTables <- function(database.path,
 #'
 #' @examples
 SqlCreateChildTableCombo <-  function(recount3.project.IDs,
-                                      database.path) {
+                                      database.sqlite,
+                                      results.folder) {
   
   
   ## CONNECT THE DATABASE
-  con <- dbConnect(RSQLite::SQLite(), database.path)
+  con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
   
   tables <- DBI::dbListTables(conn = con)
@@ -572,7 +594,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
     
     # project_id <- recount3.project.IDs[1]
     
-    logger::log_info(" --> Working with '", project_id, "' ...")
+    logger::log_info("Working with '", project_id, "' ...")
     results_folder_local <- file.path(results.folder, project_id)
     
     clusters <- master_metadata %>% dplyr::filter(SRA_project == project_id) %>% distinct(cluster) %>% pull()
@@ -587,7 +609,8 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
       ## PREPARE DATA
       ###############################
       
-      if (file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
+      if (!DBI::dbExistsTable(con, name = paste0(cluster_id, "_", project_id, "_combo")) &&
+          file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_all_split_reads_combos.rds")) && 
           file.exists(paste0(results_folder_local, "/base_data/", project_id, "_", cluster_id, "_split_read_counts_combos.rds"))) {  
         
         ## Load split read counts
@@ -625,7 +648,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
         
         if (file.exists( paste0(results.folder, "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds"))) {
           
-          logger::log_info(" --> calculating TPM values ... ")
+          logger::log_info("Calculating TPM values ... ")
           
           tpm <- readRDS(file = paste0(results.folder,  "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
             dplyr::select(gene_id, all_of(samples))
@@ -673,7 +696,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
         ## CREATE AND POPULATE CHILD 'NOVEL COMBO' TABLE
         #########################################################
         
-        logger::log_info( " --> creating 'novel combo' table ... ")
+        logger::log_info("Creating 'novel combo' table ... ")
         
         # dbRemoveTable(conn = con, paste0(cluster_id, "_", project_id, "_combo"))
         query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster_id, "_", project_id, "_combo"), "'", 
@@ -684,7 +707,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
                           FOREIGN KEY (ref_junID) REFERENCES combo (ref_junID))")
         
         ## Connect the database
-        con <- dbConnect(RSQLite::SQLite(), database.path)
+        con <- dbConnect(RSQLite::SQLite(), database.sqlite)
         DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
         
         #DBI::dbRemoveTable(conn = con, name = paste0(cluster_id, "_", project_id, "_combo"))
@@ -694,14 +717,16 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
         
         ## POPULATE THE TABLE
         summary(split_read_counts_all_details_final)
-        DBI::dbAppendTable(conn = con, name = paste0(cluster_id, "_", project_id, "_combo"), 
+        DBI::dbAppendTable(conn = con, 
+                           name = paste0(cluster_id, "_", project_id, "_combo"), 
                            value = split_read_counts_all_details_final)
         
         
         ## Disconnect the database
         DBI::dbDisconnect(conn = con)
         
-        logger::log_info("'", cluster_id, "_", project_id, "_combo' table populated!")
+        logger::log_info("'", cluster_id, "_", project_id, "_combo' table created and populated! ", 
+                         split_read_counts_all_details_final$ref_junID %>% unique %>% length, " novel combos stored!")
         
         ###############################################
         ## TODO: bridge table to store relationship between junctions and samples
@@ -714,7 +739,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
                                         dplyr::relocate(ref_junID) %>%
                                         dplyr::select(-junID) %>%
                                         mutate(ref_junID = ref_junID %>% as.character()),
-                                      database.path,
+                                      database.sqlite,
                                       origin.table = paste0(cluster_id, "_", project_id, "_combo"),
                                       bridge.table.name = paste0("bridge_", cluster_id, "_", project_id, "_combo_metadata"))
         
@@ -725,8 +750,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
         
         
       } else {
-        DBI::dbDisconnect(conn = con) 
-        stop("Dependency files do not exist! '", cluster_id, "_", project_id, "'!")
+        logger::log_warn("Table '", cluster_id, "_", project_id, "' exists or dependency files not found!")
       }
     }
     gc()
@@ -736,7 +760,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
 
 
 SqlCreateBridgeTablewMetadata <- function(db.intron,
-                                          database.path,
+                                          database.sqlite,
                                           origin.table,
                                           bridge.table.name) {
   
@@ -753,7 +777,7 @@ SqlCreateBridgeTablewMetadata <- function(db.intron,
   
   
   ## Connect to the databse ----------------------------------------------
-  con <- dbConnect(RSQLite::SQLite(), database.path)
+  con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
 
   
@@ -908,45 +932,53 @@ AddMSRMeasures <- function(db.introns) {
     return()
 }
 
-AddMedianTPMValues <- function(results.folder, cluster.samples, master.gene, master.transcript, project.id, cluster.id, db.introns) {
+AddMedianTPMValues <- function(results.folder, 
+                               cluster.samples, 
+                               master.gene, 
+                               master.transcript, 
+                               project.id, 
+                               cluster.id, 
+                               db.introns,
+                               bridge.transcript) {
   
-  if ( file.exists( paste0(results.folder, "/", project.id, "/tpm/", project.id, "_", cluster.id, "_tpm.rds")) ) {
+  if (file.exists(file.path(results.folder, project.id, "tpm", 
+                            paste0(project.id, "_", cluster.id, "_tpm.rds")))) {
     
-    logger::log_info("calculating TPM values ... ")
+    logger::log_info("Calculating TPM values ... ")
     
-    tpm <- readRDS(file = paste0(results.folder,  "/", project.id, "/tpm/", project.id, "_", cluster.id, "_tpm.rds")) %>% 
+    tpm <- readRDS(file = file.path(results.folder, project.id, "tpm", paste0(project.id, "_", cluster.id, "_tpm.rds"))) %>% 
       dplyr::select(gene_id, all_of(cluster.samples))
     
-    tpm <- tpm  %>%
+    median_tpm <- tpm  %>%
       dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-      dplyr::select(gene_id, tpm_median) 
-
-    ## In case there are any duplicates, take the genes with the maximum tpms
-    tpm <- tpm %>% 
+      dplyr::select(gene_id, tpm_median) %>% 
       distinct(gene_id, .keep_all = T) %>%
-      group_by(gene_id) %>% 
+      group_by(gene_id) %>% ## In case there are any duplicates, take the genes with the maximum tpms
       summarize_all(max) %>%
       ungroup()
+    rm(tpm)
     
-    tpm %>% as_tibble()
-    
-    tpm_tidy <- tpm %>%
-      inner_join(y = master.gene %>% as_tibble(),
+    median_tpm_w_master_info <- median_tpm %>%
+      inner_join(y = master.gene %>% dplyr::select(id, gene_id),
                  by = c("gene_id" = "gene_id")) %>%
-      inner_join(y = master.transcript %>% as_tibble(),
+      inner_join(y = master.transcript %>% dplyr::select(transcript_id = id, gene_id),
                  by = c("id" = "gene_id"),
                  multiple = "all") %>%
-      dplyr::select(transcript_id = id.y, 
-                    tpm_median)
+      dplyr::select(transcript_id, tpm_median) %>%
+      left_join(y = bridge.transcript %>% dplyr::select(ref_junID, transcript_id),
+                by = "transcript_id") %>% 
+      drop_na()
+    rm(median_tpm)
+    
     
     db.introns <- db.introns %>%
-      left_join(y = tpm_tidy,
-                by = c("transcript_id" = "transcript_id")) %>% 
-      dplyr::rename(gene_tpm = tpm_median)
-    
-    
-    
-    
+      left_join(y = median_tpm_w_master_info, 
+                by = c("ref_junID")) %>% 
+      dplyr::rename(gene_tpm = tpm_median) %>% 
+      dplyr::select(-transcript_id)
+
+  } else {
+    logger::log_warn("No TPM values found... ")
   } 
   
   return(db.introns)
@@ -982,7 +1014,7 @@ AddIntronCategory <- function(db.introns) {
     return()
 }
 
-CreateAndPopulateMissplicedChildTable <- function(database.path, cluster.id, project.id, db.introns.final) {
+CreateAndPopulateMissplicedChildTable <- function(database.sqlite, cluster.id, project.id, db.introns.final) {
   
   logger::log_info( "creating 'mis-spliced' table ... ")
   
@@ -997,15 +1029,15 @@ CreateAndPopulateMissplicedChildTable <- function(database.path, cluster.id, pro
                           novel_sum_counts INTEGER NOT NULL, 
                           MSR_D DOUBLE NOT NULL, 
                           MSR_A DOUBLE NOT NULL, 
-                          gene_tpm DOUBLE, 
-                          transcript_id INTEGER NOT NULL, 
+                          gene_tpm DOUBLE,
                           PRIMARY KEY (ref_junID, novel_junID),
-                          FOREIGN KEY (ref_junID, novel_junID) REFERENCES novel (ref_junID, novel_junID),
-                          FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
+                          FOREIGN KEY (ref_junID, novel_junID) REFERENCES novel (ref_junID, novel_junID))")
   
   ## Connect the database
-  con <- dbConnect(RSQLite::SQLite(), database.path)
+  con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
+  
+  
   ## Create the child table
   res <- DBI::dbSendQuery(conn = con, statement = query)
   DBI::dbClearResult(res)
@@ -1024,49 +1056,51 @@ CreateAndPopulateMissplicedChildTable <- function(database.path, cluster.id, pro
   DBI::dbDisconnect(conn = con)
   
   
-  logger::log_info("'",cluster.id, "_", project.id, "_misspliced' table populated!")
+  logger::log_info("'",cluster.id, "_", project.id, "_misspliced' table populated! ", db.introns.final %>% nrow(), " jxn pairs stored!")
   
 }
 
-CreateAndPopulateMissplicedChildTable <- function(database.path, cluster.id, project.id, db.introns.final){
+CreateAndPopulateNeverMissplicedChildTable <- function(database.sqlite, cluster.id, project.id, db.introns.final){
+
+  logger::log_info( "creating 'never mis-spliced' table ... ")
   
-  query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster.id, "_", project.id, "_nevermisspliced"), "'", 
+  query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster.id, "_", project.id, "_nevermisspliced"), "'",
                   "(ref_junID INTEGER NOT NULL,
-                          ref_n_individuals INTEGER NOT NULL, 
-                          ref_sum_counts INTEGER NOT NULL,
-                          MSR_D DOUBLE NOT NULL, 
-                          MSR_A DOUBLE NOT NULL, 
-                          ref_type TEXT NOT NULL, 
-                          gene_tpm DOUBLE,
-                          transcript_id INTEGER NOT NULL,
-                          PRIMARY KEY (ref_junID),
-                          FOREIGN KEY (ref_junID) REFERENCES intron (ref_junID),
-                          FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
-  
-  
+                  ref_n_individuals INTEGER NOT NULL,
+                  ref_sum_counts INTEGER NOT NULL,
+                  MSR_D DOUBLE NOT NULL,
+                  MSR_A DOUBLE NOT NULL,
+                  ref_type TEXT NOT NULL,
+                  gene_tpm DOUBLE,
+                  PRIMARY KEY (ref_junID),
+                  FOREIGN KEY (ref_junID) REFERENCES intron (ref_junID))")
+
+
   ## Connect the database
-  con <- dbConnect(RSQLite::SQLite(), database.path)
+  con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
-  
-  ## Create the child table 
+
+  ## Create the child table
   res <- DBI::dbSendQuery(conn = con, statement = query)
   DBI::dbClearResult(res)
-  
+
   ## POPULATE TABLE
   DBI::dbAppendTable(conn = con,
-                     name = paste0(cluster.id, "_", project.id, "_nevermisspliced"), 
+                     name = paste0(cluster.id, "_", project.id, "_nevermisspliced"),
                      value = db.introns.final)
-  
+
   ## CREATE INDEX
-  query <- paste0("CREATE UNIQUE INDEX 'index_", 
+  query <- paste0("CREATE UNIQUE INDEX 'index_",
                   paste0(cluster.id, "_", project.id, "_nevermisspliced"), "' ON '",
                   paste0(cluster.id, "_", project.id, "_nevermisspliced"),"'(ref_junID)");
+  
   res <- DBI::dbSendQuery(conn = con, statement = query)
   DBI::dbClearResult(res)
-  
+
   ## Disconnect the database
   DBI::dbDisconnect(conn = con)
-  
-  logger::log_info("'", cluster.id, "_", project.id, "_nevermisspliced' table populated!")
-  
+
+  logger::log_info("'", cluster.id, "_", project.id, "_nevermisspliced' table populated! ",
+                   db.introns.final %>% nrow, " never mis-spliced introns stored!")
+
 }

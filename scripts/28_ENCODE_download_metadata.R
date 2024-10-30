@@ -112,7 +112,7 @@ ENCODEDownloadMetadata <- function(experiment_type,
   
   
   ## Add category information ----
-  if ( str_detect(string = metadata_df[1,]$assay, pattern = "shRNA", negate = F) ) {
+  if (str_detect(string = metadata_df[1,]$assay, pattern = "shRNA", negate = F)) {
     
     
     metadata_df <- AddTargetGeneCategory(metadata_df = output_metadata,
@@ -121,7 +121,7 @@ ENCODEDownloadMetadata <- function(experiment_type,
                                          output_file = output_metadata)
     
     metadata_df <- metadata_df %>%
-      dplyr::filter(if_any(c("Splicing.regulation", Spliceosome, "Novel.RBP", "Exon.Junction.Complex", NMD), ~ . != 0))
+      dplyr::filter(if_any(c("Splicing regulation", Spliceosome, "Novel RBP", "Exon Junction Complex", NMD), ~ . != 0))
     
   }
   
@@ -336,7 +336,7 @@ GenerateMetadata <- function(summary_df,
     dplyr::group_by(target_gene) %>%
     dplyr::summarise(cell_lines = list(cell_line))
   
-  if ( !is.null(required_cell_lines) ) {
+  if (!is.null(required_cell_lines)) {
     valid_target_genes <- valid_target_genes %>%
       dplyr::rowwise() %>%
       dplyr::filter(all(required_cell_lines %in% cell_lines)) %>%
@@ -443,13 +443,14 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
   
   ## Loop through every gene silencing series found for the target gene
   tg_df <- foreach(iter_gss = seq(nrow(summary_tg_df)), .combine = dplyr::bind_rows) %do%{
-    
+    #iter_gss <- 1
     gss <- summary_tg_df[iter_gss, ]
     
     ## Gene silencing series information
     gss_id <- gss$gene_silencing_series
     gss_cell_line <- gss$cell_line
     logger::log_info("\t Starting Gene Silencing Series ", gss_id, " (cell line = ", gss_cell_line, "):")
+    
     
     ## Get the API response for the gene silencing series
     response_gss <- GetUrlResponse(paste0("https://www.encodeproject.org/gene-silencing-series/", gss_id, "?format=json"))
@@ -460,6 +461,7 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
     ## Loop through every experiment found in the gene silencing series
     gss_df <- foreach(iter_experiment = seq(nrow(gss_experiments)), .combine = dplyr::bind_rows) %do%{
       
+      # iter_experiment <- 2
       experiment <- gss_experiments[iter_experiment, ]
       
       experiment_id <- experiment$accession
@@ -475,9 +477,7 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
                                                 valid_file_format = valid_file_format, 
                                                 valid_output_type = valid_output_type, valid_genome_annotation)
       
-      if ( nrow(experiment_sample_files) == 0 ) {
-        next;
-      }
+      if (nrow(experiment_sample_files) == 0) { next; }
       
       if(experiment_additional_info$nucleic_acid_type != valid_nucleic_acid_type) 
         return(cbind(experiment_sample_files, experiment_additional_info))
@@ -486,7 +486,9 @@ LoopGeneSilencingSeries <- function(summary_tg_df,
       experiment_rin <- GetRin(experiment$replicates[[1]])
       experiment_read_depth <- GetReadDepth(experiment$analyses[[1]], valid_genome_annotation)
       experiment_donor_info <- GetDonorInfo(experiment$replicates[[1]])
-      experiment_documents <- GetDocumentFiles(experiment$replicates[[1]], gss$target_gene, experiment_type)
+      experiment_documents <- GetDocumentFiles(replicates = experiment$replicates[[1]],
+                                               target_gene = gss$target_gene, 
+                                               experiment_type = experiment_type)
       experiment_doi <- experiment$doi
       experiment_gene_quantifications <- GetGeneQuantificationFiles(experiment$files[[1]])
       
@@ -699,8 +701,9 @@ GetDonorInfo <- function(replicates) {
 GetDocumentFiles <- function(replicates, 
                              target_gene, 
                              experiment_type){
-  if(experiment_type == "case"){
+  #if(experiment_type == "case"){
     documents_info <- foreach(iter_replicate = seq(nrow(replicates)), .combine = "rbind") %do%{
+      # iter_replicate <- 2
       replicate <- replicates[iter_replicate, ]
       
       bio_rep <- replicate$biological_replicate_number
@@ -719,9 +722,9 @@ GetDocumentFiles <- function(replicates,
                      document = documents, 
                      biosample_alias = aliases)
     }
-  }else{
-    documents_info <- tibble(bio_rep = c(1, 2))
-  }
+  #}else{
+  #  documents_info <- tibble(bio_rep = c(1, 2))
+  #}
   
   return(documents_info)
 }

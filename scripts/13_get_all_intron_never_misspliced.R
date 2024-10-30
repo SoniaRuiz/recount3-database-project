@@ -19,7 +19,7 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
     
     # project_id <- recount3.project.IDs[10]
     
-    logger::log_info(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
+    # logger::log_info(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     base_folder <- paste0(results.folder, "/", project_id)
     
     if ( is.null(all.clusters) && 
@@ -37,7 +37,7 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
         
         if ( file.exists(paste0(base_folder, "/junction_pairing/", cluster, 
                                 "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
-          logger::log_info(paste0(Sys.time(), " --> ", cluster))
+          # logger::log_info(paste0(Sys.time(), " --> ", cluster))
           df_introns_never <- readRDS(file = paste0(base_folder, "/junction_pairing/", cluster, 
                                                     "/not-misspliced/",cluster, "_all_notmisspliced.rds")) %>% as_tibble()
           return(data.frame(ref_junID = df_introns_never$value))
@@ -49,7 +49,5 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
     }
   })
   
-  df_never %>%
-    distinct(ref_junID) %>%
-    return()
+  df_never %>% distinct(ref_junID) %>% return()
 }

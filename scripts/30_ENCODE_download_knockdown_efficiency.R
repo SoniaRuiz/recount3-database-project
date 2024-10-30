@@ -3,6 +3,9 @@
 ## https://github.com/guillermo1996/ENCODE_Metadata_Extraction
 ##############################################################
 
+library(biomaRt)
+
+
 #' Title
 #' Downloads from the ENCODE platform the WB details regarding the knockdown efficiency of each RBP
 #' @param metadata 
@@ -13,7 +16,9 @@
 #'
 #' @examples
 DownloadKnockdownEfficiencyWB <- function(metadata,
-                                          results.path) {
+                                          results.path,
+                                          replace,
+                                          num.cores) {
   
   ## Create and load python environment -------------------------
   
@@ -40,8 +45,7 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   metadata_WB_output <- file.path(results_path, "metadata_WB_kEff.tsv")
   metadata_PCR_output <- file.path(results_path, "metadata_PCR_kEff.tsv")
   
-  download_cores = 16
-  overwrite_results = F
+  #download_cores = 1
   resize_perc = 0.25
   min_width = 600
   
@@ -58,7 +62,10 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   CreateDirectories(target_RBPs, metadata_filtered)
   
   ## Download the files and add a column with their path
-  metadata_documents <- DownloadCharacterizationDocuments(metadata_filtered, download_cores, overwrite_results = overwrite_results, silent = F)
+  metadata_documents <- DownloadCharacterizationDocuments(metadata_filtered = metadata_filtered, 
+                                                          download_cores = num.cores, 
+                                                          overwrite_results = replace, 
+                                                          silent = F)
   
   
   ## Check the existence of the files
@@ -73,7 +80,7 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
   }
   
   ## Extract the images of all files
-  metadata_images <- ExtractImages(metadata_documents, overwrite_results = overwrite_results, virtualenv_path = virtualenv)
+  metadata_images <- ExtractImages(metadata_documents, overwrite_results = replace, virtualenv_path = virtualenv)
   
   ## Extract text from images ----
   ## This cannot be separated into an external function.
@@ -95,8 +102,9 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
     image_small <- ResizeImage(image, resize_perc, min_width)
     image_small$save(file.path(fs::path_expand(path), "cropped_image.png"))
     
+    # pytesseract$pytesseract$tesseract_cmd <- "/home/sg2173/PROJECTS/SR/recount3-database-project/virtual_env/ENCODE_python_env/lib/python3.11/site-packages/tesseract"
     
-    text_df <- pytesseract$pytesseract$image_to_string(image = image_small) %>%
+    text_df <- pytesseract$image_to_string(image = image_small) %>%
       str_replace_all("\\f", "") %>%
       str_split("\\n", simplify = T) %>%
       str_split(" ", simplify = T) %>%
@@ -167,7 +175,89 @@ DownloadKnockdownEfficiencyWB <- function(metadata,
 
 
 
-## HELPER FUNCTIONS -------------------------------------------------------------------------------------
+
+#' Title
+#' Downloads the gene TPM values from each ENCODE shRNA RBP knockdown experiment studied
+#' @param metadata 
+#' @param results.path 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+DownloadKnockdownEfficiencyTPM <- function(metadata,
+                                           results.path,
+                                           replace,
+                                           num.cores) {
+  
+  if (replace) {
+    ## Set Variables ----------------------------------------------
+    
+    results_path <- results.path # file.path(results.path, "/TPM/RBPs/")
+    dir.create(results_path, recursive = T, showWarnings = F)
+    
+    main_path <- results.path # file.path(results.path, "/TPM/RBPs/")
+    dir.create(main_path, recursive = T, showWarnings = F)
+    
+    
+    ## Input Files ----
+    
+    metadata_path <- file.path(main_path, "metadata_samples.tsv")
+    metadata_TPM_output <- file.path(main_path, "metadata_TPM_kEff.tsv")
+    
+    
+    ## Define the algorithm variables ----
+    download_only = F
+    
+    # 2. Pipeline ----
+    ## Generate the variables ----
+    #metadata <- readr::read_delim(metadata_path, show_col_types = F) %>% as_tibble()
+    
+    target_RBPs <- metadata %>%
+      dplyr::filter(!is.na(gene_quantification_id)) %>%
+      dplyr::pull(target_gene) %>%
+      unique()
+    
+    #print(target_RBPs)
+    
+    ensembl_target_RBPs <- mapIds(org.Hs.eg.db, keys = target_RBPs, keytype = "SYMBOL", column="ENSEMBL") %>% 
+      as.data.frame() %>%
+      tibble::rownames_to_column() %>%
+      dplyr::rename("hgnc_symbol" = "rowname", "ensembl_gene_id" = ".")
+    
+    
+    
+    metadata_filtered <- metadata %>%
+      dplyr::filter(target_gene %in% target_RBPs, !is.na(gene_quantification_id)) %>%
+      dplyr::select(target_gene, cell_line, experiment_type, sample_id, gene_quantification_id) %>%
+      dplyr::mutate(path = paste0(main_path, target_gene, "/", experiment_type, "/")) %>%
+      dplyr::left_join(y = ensembl_target_RBPs, 
+                       by = c("target_gene" = "hgnc_symbol"), multiple = "all") %>%
+      dplyr::relocate(ensembl_gene_id, .before = cell_line)
+    
+    ## Create the directories ----
+    CreateDirectories(target_RBPs, metadata_filtered)
+    
+    ## Download the files and add a column with their path ----
+    metadata_quantifications <- downloadGeneQuantifications(metadata_filtered,
+                                                            download_cores = num.cores, 
+                                                            replace )
+    print(metadata_quantifications)
+    
+    ## Extract & save the TPMs ----
+    ExtractTPM(metadata_quantifications, output_file = main_path)
+    
+    ## Generate and save the knockdown efficiencies ----
+    # metadata_kEff <- generateKnockdownEfficiency(metadata_TPM,
+    #                                              output_file = metadata_TPM_output)
+  }
+  
+}
+
+
+
+
+## HELPER FUNCTIONS - WESTERN BLOT ---------------------------------------------
 
 
 #' Creates the required subdirectories
@@ -183,15 +273,14 @@ CreateDirectories <- function(target_RBPs,
                               metadata_filtered){
   for(i in seq(length(target_RBPs))){
     target_RBP <- target_RBPs[i]
-    RBP_metadata <- metadata_filtered %>% 
-      dplyr::filter(target_gene == target_RBP)
-    
+    RBP_metadata <- metadata_filtered %>% dplyr::filter(target_gene == target_RBP)
     for (row in seq(nrow(RBP_metadata))) {
       document.path <- RBP_metadata[row, "path", T]
       dir.create(document.path, recursive = T, showWarnings = F)
     }
   }
 }
+
 
 #' Download the biosample preparation and characterization documents
 #'
@@ -211,15 +300,15 @@ CreateDirectories <- function(target_RBPs,
 #' @return Data.frame with the information of the downloaded files.
 #' @export
 DownloadCharacterizationDocuments <- function(metadata_filtered,
-                                              download_cores = 1,
-                                              overwrite_results = FALSE,
-                                              silent = F){
+                                              download_cores,
+                                              overwrite_results,
+                                              silent){
   
-  if(!silent){
+  if (!silent) {
     pb <- txtProgressBar(max=nrow(metadata_filtered), style=3)
     progress <- function(n) setTxtProgressBar(pb, n)
     opts <- list(progress=progress)
-  }else{
+  } else {
     opts <- list()
   }
   
@@ -250,6 +339,7 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
           download.file(alt_download_link, file_path, method = "wget", extra = "--quiet --no-check-certificate")
         }, error = function(k){
           file.remove(file_path)
+          #message(k)
         })
       })
     } 
@@ -260,6 +350,7 @@ DownloadCharacterizationDocuments <- function(metadata_filtered,
     
     return(row)
   } %>% dplyr::bind_rows()
+  
   if (!silent) close(pb)
   stopCluster(cl)
   
@@ -396,4 +487,171 @@ WriteEfficiencyTable <- function(metadata_kEff,
   return(metadata_kEff_output)
 }
 
-## 30
+
+
+
+
+
+## HELPER FUNCTIONS - TPM ------------------------------------------------------
+
+
+#' Download the gene quantifications files
+#'
+#' From the samples' metadata previously generated, it download the gene
+#' quantification files per sample. This file contains all the gene counts (and
+#' TPM) found in the particular sample.
+#'
+#' @param metadata_filtered Data.frame containing the information required to
+#'   download the gene quantifications per sample.
+#' @param download_cores (Optional) Number of cores to use to download. Defaults to 1.
+#' @param overwrite_results (Optional) Whether to download already found files. Defaults to FALSE.
+#' @param silent (Optional) Whether to print progress bar of the download process. Defaults to FALSE.
+#'
+#' @return Data.frame with the information of the downloaded files.
+#' @export
+downloadGeneQuantifications <- function(metadata_filtered,
+                                        download_cores = 1,
+                                        overwrite_results = F,
+                                        silent = F){
+  if(!silent){
+    pb <- txtProgressBar(max=nrow(metadata_filtered), style=3)
+    progress <- function(n) setTxtProgressBar(pb, n)
+    opts <- list(progress=progress)
+  }else{
+    opts <- list()
+  }
+  
+  cl <- makeCluster(download_cores)
+  registerDoSNOW(cl)
+  metadata_gene_quant <- foreach(row_index = seq(nrow(metadata_filtered)), .export = "getDownloadLinkGeneQuantification", .options.snow=opts) %dopar%{
+    
+    # row_index <- 1
+    row = metadata_filtered[row_index, ]
+    
+    ## Two possible download paths:
+    download_link <- getDownloadLinkGeneQuantification(row)
+    
+    ## Where to save the file
+    file_path <- paste0(row$path, row$gene_quantification_id, ".tsv")
+    row$file_path <- file_path
+    
+    ## If overwrite results is set to TRUE or if the file does not exists or if
+    ## the file is too small, try to download it from the different links. If
+    ## none it success, remove the resulted file. We also modify the column
+    ## "file_path" if the file was successfully created.
+    if(overwrite_results || !file.exists(file_path) || file.info(file_path)$size < 10){
+      tryCatch({
+        download.file(download_link, file_path, method = "wget", extra = "--quiet --no-check-certificate")
+      }, error = function(e){
+        file.remove(file_path)
+      })
+    }
+    
+    if(!file.exists(file_path) || file.info(file_path)$size < 10){
+      row$file_path <- NA
+    }
+    
+    return(row)
+  } %>% dplyr::bind_rows()
+  if(!silent) close(pb)
+  stopCluster(cl)
+  
+  return(metadata_gene_quant)
+}
+
+#' Generates the download link
+#'
+#' @param row Row of the data.frame with the gene quantification ID.
+#'
+#' @return Download link of the gene quantification file.
+#' @export
+getDownloadLinkGeneQuantification <- function(row){
+  gene_quantification_id <- row$gene_quantification_id
+  
+  return(paste0("https://www.encodeproject.org/files/", gene_quantification_id, "/@@download/", gene_quantification_id, ".tsv"))
+}
+
+
+#' Extract TPM of a particular
+#'
+#' Given a Data.frame with the samples' metadata, it reads the downloaded gene
+#' quantification files and extract the TPM of the target gene.
+#'
+#' @param metadata_quantifications Data.frame with the information of the
+#'   downloaded files.
+#'
+#' @return Data.frame with the TPM of the target gene for each sample.
+#' @export
+ExtractTPM <- function(metadata_quantifications,
+                       output_file){
+  
+  all_RBPs <- metadata_quantifications$target_gene %>% unique
+  
+  
+  for(RBP in all_RBPs) {
+    
+    # RBP <- all_RBPs[1]
+    
+    experiment_types <- metadata_quantifications %>%
+      filter(target_gene == RBP) %>%
+      pull(experiment_type) %>%
+      unique
+    
+    message(Sys.time(), " - ", RBP, "...")
+    
+    for (type in experiment_types) {
+      
+      # type <- experiment_types[1]
+      
+      metadata_quantifications_local <- metadata_quantifications %>%
+        filter(target_gene == RBP,
+               experiment_type == type)
+      
+      metadata_TPM <- foreach(row_index = seq(nrow(metadata_quantifications_local))) %do%{
+        suppressPackageStartupMessages(library(tidyverse))
+        
+        # row_index <- 1
+        
+        row = metadata_quantifications_local[row_index, ]
+        
+        message(Sys.time(), " - ", type, "...")
+        
+        file_path <- row$file_path
+        
+        read_tpm <- readr::read_delim(file_path, delim = "\t", show_col_types = F) %>%
+          dplyr::mutate(sample_id = row$sample_id,
+                        gene_quantification_id = row$gene_quantification_id) %>%
+          dplyr::select(gene_id, TPM, sample_id) %>%
+          filter(TPM > 0)
+        
+        return(read_tpm)
+        
+      } %>% dplyr::bind_rows()
+      
+      
+      metadata_TPM_tidy <- metadata_TPM %>%
+        mutate(gene_id = str_extract(gene_id, "[^.]+")) %>%
+        group_by(sample_id, gene_id) %>%
+        mutate(avg_TPM = TPM %>% mean) %>%
+        ungroup() %>%
+        dplyr::select(gene_id, sample_id, avg_TPM) %>%
+        group_by(sample_id) %>%
+        dplyr::distinct(gene_id, .keep_all = T) %>%
+        ungroup() %>%
+        pivot_wider(id_cols = gene_id, names_from = sample_id, values_from = avg_TPM )
+      
+      
+      metadata_TPM_tidy[is.na(metadata_TPM_tidy)] <- 0
+      
+      metadata_TPM_tidy %>% nrow() %>% print()
+      
+      dir_path <- file.path(output_file, RBP, "tpm")
+      dir.create(path = dir_path, recursive = T)
+      
+      saveRDS(object = metadata_TPM_tidy,
+              file = file.path(dir_path, paste0(RBP, "_", type, "_tpm.rds")))
+      
+    }
+  }
+  
+}

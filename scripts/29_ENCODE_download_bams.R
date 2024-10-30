@@ -17,9 +17,9 @@ ENCODEDownloadBams <- function(metadata,
   ### variables are loaded from disk.
   
   overwrite <- T
-  download_cores = 2
-  samtools_threads = 2
-  samtools_memory = "5G"
+  download_cores = 1
+  samtools_threads = 1
+  samtools_memory = "1G"
   
   
   ## Load metadata ----
@@ -191,9 +191,9 @@ GetDownloadLinkMetadata <- function(cluster_metadata_row){
 #' @export
 DownloadExtractBamFiles <- function(RBP.metadata,
                                     RBP.path,
-                                    num.cores = 4,
-                                    samtools.threads = 1,
-                                    samtools.memory = "5G",
+                                    num.cores,
+                                    samtools.threads,
+                                    samtools.memory,
                                     samtools.path,
                                     regtools.path,
                                     overwrite = F) {
@@ -225,7 +225,8 @@ DownloadExtractBamFiles <- function(RBP.metadata,
       
       ## Check if file BAM file is already extracted
       if(!overwrite & file.exists(file_path)) {
-        return(paste0("Ignoring extraction and download. Junction file for sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ") already found!"))
+        return(paste0("Ignoring extraction and download. Junction file for sample ", sample_id, 
+                      " (", sample_target_gene, " - ", sample_cluster, ") already found!"))
       }
       
       ## Download the BAM file
@@ -238,11 +239,12 @@ DownloadExtractBamFiles <- function(RBP.metadata,
     parallel::stopCluster(cl)
     
     ## Print the metrics
-    invisible(lapply(metrics, function(x) logger::log_info(x[1])))
-    invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
+    #invisible(lapply(metrics, function(x) logger::log_info(x[1])))
+    #invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
   }
   
   RBPs_jxn_to_extract <- CheckJxnFilesToExtract(RBP.metadata, RBP.path) %>% arrange(sample_id)
+  
   if (nrow(RBPs_jxn_to_extract) > 0) {
     
     logger::log_info("Starting the extraction process...")
@@ -272,26 +274,27 @@ DownloadExtractBamFiles <- function(RBP.metadata,
         {
           ## Sort the BAM file using samtools
           logger::log_info("Starting sorting process of sample ", sample_id, " (", sample_target_gene, " - ", sample_cluster, ")")
+          
           system2(command = file.path(samtools.path, "samtools"), args = c(
             "sort", file_path,
             "-o", sort_path,
-            "--threads", samtools.threads,
-            "-m", samtools.memory
-          ))
+            "--threads", samtools.threads))#,
+            #"-m", samtools.memory
+          #))
           
           if(!file.exists(sort_path)) stop("Sorting failed")
           
           logger::log_info("Starting the indexing process...")
           system2(command = file.path(samtools.path, "samtools"), args = c(
             "index", sort_path,
-            "-@", samtools.threads
+            "--threads", samtools.threads
           ))
           
           if(!file.exists(sort_path)) stop("Indexing failed")
           
           logger::log_info("Starting the junction extraction process...")
           system2(command = file.path(regtools.path, "regtools"), args = c(
-            "junctions extract", sort_path,
+            "junctions extract ", sort_path,
             "-m 25",
             "-M 1000000",
             "-s XS",

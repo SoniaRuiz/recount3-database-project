@@ -27,14 +27,14 @@ GetDistances <- function(project.id,
     file_path <- file.path(folder.name, paste0(cluster, "_", sample, "_distances.rds"))
     
     if (file.exists(file_path) && !replace) {
-      stop(message(cluster, " sample '", sample, "' exists!"))
+      stop(logger::log_info(cluster, " sample '", sample, "' exists!"))
     }
     
     if (sum(colnames(split.read.counts) == sample) != 1) {
-      stop(message("Error: sample '", sample, "' not found within the split-reads file!"))
+      stop(logger::log_info("Error: sample '", sample, "' not found within the split-reads file!"))
     }
     
-    print(paste0(Sys.time(), " - ", project.id, " - ", cluster, " sample '", num_sample, "'"))
+    logger::log_info(project.id, " - ", cluster, " sample '", num_sample, "'")
     
     split_read_counts_sample <- split.read.counts %>%
       as_tibble() %>%
@@ -88,16 +88,16 @@ ComputeDistances <- function(junction.class, split.reads.details.sample, sample)
     
     # strand_type <- strand_types[1]
     
-    junctions <- split.reads.details.sample %>% filter(type == junction.class, strand == strand_type) %>% GRanges()
+    n_junctions <- split.reads.details.sample %>% filter(type == junction.class, strand == strand_type) %>% GRanges()
     annotated <- split.reads.details.sample %>% filter(type == "annotated", strand == strand_type) %>% GRanges()
     
     if ((junction.class == "novel_donor" && strand_type == "+") || (junction.class == "novel_acceptor" && strand_type == "-")){
-      overlaps <- GenomicRanges::findOverlaps(query = junctions, subject = annotated, ignore.strand = FALSE, type = "end")
+      overlaps <- GenomicRanges::findOverlaps(query = n_junctions, subject = annotated, ignore.strand = FALSE, type = "end")
     } else {
-      overlaps <- GenomicRanges::findOverlaps(query = junctions, subject = annotated, ignore.strand = FALSE, type = "start")
+      overlaps <- GenomicRanges::findOverlaps(query = n_junctions, subject = annotated, ignore.strand = FALSE, type = "start")
     }
 
-    novel_junctions <- junctions[queryHits(overlaps),] %>% as_tibble()
+    novel_junctions <- n_junctions[queryHits(overlaps),] %>% as_tibble()
     ref_junctions <- annotated[subjectHits(overlaps),] %>% as_tibble()
     
     if (nrow(novel_junctions) == 0) return(NULL)
@@ -108,7 +108,7 @@ ComputeDistances <- function(junction.class, split.reads.details.sample, sample)
       novel_junctions$end - ref_junctions$end
     }
     
-    CreateDistanceDataFrame(novel.junctions = novel_junctions, ref.junctions = ref_junctions, distance, sample, strand_type)
+    CreateDistanceDataFrame(novel.junctions = novel_junctions, ref.junctions = ref_junctions, distance, sample, type = junction.class)
   })
   
   bind_rows(results)

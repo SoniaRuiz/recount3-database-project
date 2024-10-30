@@ -57,13 +57,15 @@ GenerateMaxEntScore <- function(db.introns,
   ## get the maxentscan for the 5' splice site
   write.table(to.BED, file = tmp.file, quote = F, sep = "\t", row.names = F, col.names = F)
   tmp.file_seq <- tempfile()
-  system(paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
-                tmp.file, " -tab -fo ", tmp.file_seq))
+  # print(paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
+  #              tmp.file, " -tab -fo ", tmp.file_seq))
+  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
+                          tmp.file, " -tab -fo ", tmp.file_seq))
   donor_sequences_input <- read.delim(tmp.file_seq, header = F)
   head(donor_sequences_input)
   head(db.introns)
   
-  
+
   #stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(donor_sequences_input$V1)))),
   #                    db.introns$junID %>% as.character()))
   db.introns <- cbind(db.introns, 
@@ -86,8 +88,8 @@ GenerateMaxEntScore <- function(db.introns,
   
   write.table(to.BED, file = tmp.file, quote = F, sep = "\t", row.names = F, col.names = F)
   tmp.file_seq <- tempfile()
-  system(paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
-                tmp.file, " -tab -fo ", tmp.file_seq))
+  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
+                          tmp.file, " -tab -fo ", tmp.file_seq))
   acceptor_sequences_input <- read.delim(tmp.file_seq, header = F)
   
   head(acceptor_sequences_input)

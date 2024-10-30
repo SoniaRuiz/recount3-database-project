@@ -38,7 +38,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
       
       # p_type <- phastcons.type[1]
       
-      logger::log_info("PhastCons", p_type, "...")
+      # logger::log_info("PhastCons", p_type, "...")
       
       if (!file.exists(phastcons.bw.path)) {
         stop("PhastCons file '", phastcons.bw.path, "' does not exist!") %>% logger::log_info()
@@ -157,7 +157,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
   if (!is.null(cluster)) {
 
     saveRDS(object = db.introns, file = paste0(folder.name, "/", cluster, "_db.introns.rds"))
-    logger::log_info(" - CDTS and PhastCons scores added! Database updated!")
+    logger::log_info("CDTS and PhastCons scores added! Database updated!")
 
     rm(gr)
     rm(db.introns)

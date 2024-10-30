@@ -2,7 +2,7 @@
 #' SQL database helper function to create the different tables sequentially
 #' In case of removing different tables, useful to control which tables are removed 
 #' (i.e. only child tables or also master tables) 
-#' @param database.path Path to the .sql database file
+#' @param database.sqlite Path to the .sql database file
 #' @param recount3.project.IDs List of recount3 projects to analyse
 #' @param project.name Name given to the project 
 #' @param gtf.version Version of the reference transcriptome to use. In this case it has been used '105' corresponding
@@ -13,7 +13,7 @@
 #' @export
 #'
 #' @examples
-SqlDatabaseGeneration <- function(database.path,
+SqlDatabaseGeneration <- function(database.sqlite,
                                   recount3.project.IDs,
                                   database.folder,
                                   results.folder,
@@ -28,15 +28,15 @@ SqlDatabaseGeneration <- function(database.path,
                                   discard.minor.introns = F) {
   
   
-  print(paste0(Sys.time(), " --> ", database.path, "..."))
+  print(paste0(Sys.time(), " --> ", database.sqlite, "..."))
   
-  con <- dbConnect(RSQLite::SQLite(), database.path)
+  con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   tables <- DBI::dbListTables(conn = con)
   
   #logger::log_info("Database tables:",paste0(tables %>% print()))
 
   if (!is.null(remove.all) && remove.all) {
-    SqlRemoveTables(database.path, all = remove.all, con)
+    SqlRemoveTables(database.sqlite, all = remove.all, con)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   }
@@ -45,7 +45,7 @@ SqlDatabaseGeneration <- function(database.path,
   if (!any(tables %in% c('metadata', 'intron', 'novel', 'gene', 'transcript', 'combo'))) {
     
     logger::log_info("Creating master tables ...")
-    SqlCreateMasterTables(database.path = database.path,
+    SqlCreateMasterTables(database.sqlite = database.sqlite,
                           gtf.version = gtf.version,
                           database.folder = database.folder,
                           results.folder = results.folder,
@@ -66,10 +66,10 @@ SqlDatabaseGeneration <- function(database.path,
     logger::log_info("master tables exist!")
   }
   
-  # logger::log_info("\t Creating child tables ...")
-  # SqlCreateChildTables(database.path,
-  #                      recount3.project.IDs,
-  #                      database.folder,
-  #                      results.folder)
+  logger::log_info("Creating child tables ...")
+  SqlCreateChildTables(database.sqlite = database.sqlite,
+                       database.folder= database.folder,
+                       results.folder,
+                       recount3.project.IDs)
 
 }

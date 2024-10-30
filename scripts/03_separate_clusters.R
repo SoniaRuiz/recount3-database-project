@@ -12,9 +12,9 @@
 #' @export
 #'
 #' @examples
-separate_clusters <- function(recount3.project.IDs,
-                              project.metadata,
-                              data.source) {
+SeparateClusters <- function(recount3.project.IDs,
+                             project.metadata,
+                             data.source) {
   
   
   if ( data.source == "data_sources/gtex" ) {
