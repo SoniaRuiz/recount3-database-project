@@ -105,15 +105,20 @@ source("init_ENCODE.R")
 * sql_database_generation()
 
 ### init_ENCODE.R:
-* [*ENCODE_download_metadata()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/28_ENCODE_download_metadata.R): downloads metadata from the gene-silencing knockdown experiments of RBPs from the ENCODE platform.
-* [*ENCODE_download_bams()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/29_ENCODE_download_bams.R): downloads the BAM files corresponding to the gene-silencing knockdown experiments of RBPs from the ENCODE platform.
-* [*prepare_encode_data()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/30_ENCODE_prepare_encode_data.R): extracts the exon-exon junction split read data from each knockdown ENCODE experiments, processes and annotates them.
+* [*ENCODE_download_metadata()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/28_ENCODE_download_metadata.R): downloads metadata from the gene-silencing knockdown experiments of RBPs from the ENCODE platform. Code adapted from [https://github.com/guillermo1996](https://github.com/guillermo1996/ENCODE_Metadata_Extraction). 
+* [*ENCODE_download_bams()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/29_ENCODE_download_bams.R): downloads the BAM files corresponding to the gene-silencing knockdown experiments of RBPs from the ENCODE platform. Code adapted from [https://github.com/guillermo1996](https://github.com/guillermo1996/ENCODE_Metadata_Extraction). 
+* [*prepare_encode_data()*](https://github.com/SoniaRuiz/recount3-database-project/blob/main/scripts/30_ENCODE_prepare_encode_data.R): extracts the exon-exon junction split read data from each knockdown ENCODE experiments, processes and annotates them. 
 * junction_pairing()
 * get_all_annotated_split_reads()
 * get_all_raw_jxn_pairings()
 * tidy_data_pior_sql()
 * generate_transcript_biotype_percentage()
 * sql_database_generation()
+
+## Testing Framework
+
+The testing framework was developed by the talented [Guillermo Rocamora](https://github.com/guillermo1996). 
+Library used: https://testthat.r-lib.org/
 
 ## Dependencies
 
@@ -208,6 +213,8 @@ Alternatively:
 ```bash
 $ apt-get install bedtools
 ```
+
+
 
 ## Environments
 The code included within this repository has been successfully tested on:
