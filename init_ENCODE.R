@@ -30,7 +30,7 @@ main_project <- paste0("ENCODE_SR_", min_supporting_reads, "read_", analysis_typ
 
 args <-
   list(
-    replace = T,
+    replace = F,
     num_cores = 1,
     base_folder = here::here(),
     dependencies_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/dependencies"),
@@ -103,7 +103,7 @@ if (analysis_type == "shRNA") {
 target_RBPs <- c("EFTUD2","FUBP1","HNRNPC","NCBP2","PCBP2","PUF60",
                  "RAVER1","RBM22","U2AF1","U2AF2","PRPF4","SART3","SF3B4",
                  "MAGOH","SAFB2") %>% sort()
-  # c("ADAR","AQR","TARDBP","UPF1","UPF2")
+   #c("ADAR","AQR","TARDBP","UPF1","UPF2")
 metadata <- metadata %>% dplyr::filter(target_gene %in% target_RBPs)
 metadata %>% distinct(target_gene) %>% arrange(target_gene)
 ###############################################################
@@ -131,12 +131,11 @@ for (RBP in target_RBPs) {
       nrow(metadata %>% filter(target_gene == RBP))) {
     
     ## Download .bam files
-    ENCODEDownloadBams(metadata = metadata %>% filter(target_gene == RBP), 
+    ENCODEDownloadBams(metadata = metadata, 
                        results.path = args$results_folder,
                        regtools.path = file.path(args$tools_folder, "regtools/build/"),
                        samtools.path = file.path(args$tools_folder, "samtools-1.21/bin/"))
   }
-  
 }
 
 
@@ -238,7 +237,7 @@ for (RBP in target_RBPs) {
                         hs.fasta.path = paste0(args$dependencies_folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
                         phastcons.bw.path = paste0(args$dependencies_folder, "/hg38.phastCons17way.bw"),
                         cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
-                        remove.all = T,
+                        remove.all = F,
                         discard.minor.introns = F)
 
   

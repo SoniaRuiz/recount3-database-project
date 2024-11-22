@@ -267,7 +267,7 @@ DownloadExtractBamFiles <- function(RBP.metadata,
       sort_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort")
       junc_path <- paste0(RBP.path, sample_cluster, "/", sample_id, ".bam.sort.s0.junc")
 
-      if (!file.exists(file_path)) { stop(".bam file does not exist!")}
+      if (!file.exists(file_path)) { stop(file_path," file does not exist!")}
       
       ## Writing of the script.
       tryCatch(

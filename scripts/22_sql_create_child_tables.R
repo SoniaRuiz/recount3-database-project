@@ -358,6 +358,8 @@ SqlCreateChildTableAlternative5ss3ss <- function(database.sqlite,
                                               db.introns.final = db_introns_final)
         
         
+        
+        
 
         
         ####################################
@@ -588,6 +590,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
   ## GET FROM BRIDGE COMBO-TRANSCRIPT TABLE
   bridge_combo_transcript <- dbGetQuery(con, paste0("SELECT * FROM 'bridge_combo_transcript'")) %>% as_tibble()
   
+  DBI::dbDisconnect(conn = con)
   
   
   for (project_id in recount3.project.IDs) { 
@@ -604,6 +607,10 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
       # cluster_id <- clusters[2]
       
       logger::log_info(project_id, " --> ", cluster_id)
+      
+      ## Connect the database
+      con <- dbConnect(RSQLite::SQLite(), database.sqlite)
+      DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
       
       ###############################
       ## PREPARE DATA
@@ -652,6 +659,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
           
           tpm <- readRDS(file = paste0(results.folder,  "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
             dplyr::select(gene_id, all_of(samples))
+          
           tpm <- tpm %>%
             dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
             dplyr::select(gene_id, tpm_median) %>%
@@ -682,6 +690,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
             dplyr::rename(gene_tpm = tpm_median)
           
         } else {
+          
           split_read_counts_all_details_tidy <- split_read_counts_all_details
         }
         
@@ -706,9 +715,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
                           gene_tpm DOUBLE, 
                           FOREIGN KEY (ref_junID) REFERENCES combo (ref_junID))")
         
-        ## Connect the database
-        con <- dbConnect(RSQLite::SQLite(), database.sqlite)
-        DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
+        
         
         #DBI::dbRemoveTable(conn = con, name = paste0(cluster_id, "_", project_id, "_combo"))
         ## Create the NOVEL COMBO table
@@ -722,8 +729,7 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
                            value = split_read_counts_all_details_final)
         
         
-        ## Disconnect the database
-        DBI::dbDisconnect(conn = con)
+        
         
         logger::log_info("'", cluster_id, "_", project_id, "_combo' table created and populated! ", 
                          split_read_counts_all_details_final$ref_junID %>% unique %>% length, " novel combos stored!")
@@ -752,6 +758,9 @@ SqlCreateChildTableCombo <-  function(recount3.project.IDs,
       } else {
         logger::log_warn("Table '", cluster_id, "_", project_id, "' exists or dependency files not found!")
       }
+      
+      ## Disconnect the database
+      DBI::dbDisconnect(conn = con)
     }
     gc()
   }
@@ -821,6 +830,7 @@ SqlCreateBridgeTablewMetadata <- function(db.intron,
   
   
   logger::log_info("Bridge '", bridge.table.name, "' table created & populated!")
+  DBI::dbDisconnect(conn = con)
   
   return(bridge_table_final)
   
