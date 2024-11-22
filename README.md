@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14204939.svg)](https://doi.org/10.5281/zenodo.14204939)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.12794619.svg)](https://doi.org/10.5281/zenodo.12794619)
 
 # Splicing accuracy varies across human introns, tissues, age and disease
 
