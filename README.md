@@ -1,11 +1,12 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14204939.svg)](https://doi.org/10.5281/zenodo.14204939)
+García-Ruiz, S., Zhang, D., Gustavsson, E.K. et al. *Splicing accuracy varies across human introns, tissues, age and disease*. 
+**Nat Commun 16, 1068 (2025).** [https://doi.org/10.1038/s41467-024-55607-x](https://doi.org/10.1038/s41467-024-55607-x)
 
 # Splicing accuracy varies across human introns, tissues, age and disease
 
 *Sonia Garcia-Ruiz, [David Zhang](https://github.com/dzhang32), [Emil K Gustavsson](https://github.com/egustavsson), Guillermo Rocamora-Perez, [Melissa Grant-Peters](https://github.com/mgrantpeters), Aine Fairbrother-Browne, Regina H Reynolds, Jonathan W Brenton, Ana L Gil-Martinez, Zhongbo Chen, Donald C Rio, Juan A Botia, Sebastian Guelfi, [Leonardo Collado-Torres](https://lcolladotor.github.io/), Mina Ryten*
 
-bioRxiv 2023.03.29.534370;
-doi: [https://doi.org/10.1101/2023.03.29.534370](https://doi.org/10.1101/2023.03.29.534370)
+**Nat Commun 16, 1068 (2025).**
+doi: [https://doi.org/10.1038/s41467-024-55607-x](https://doi.org/10.1038/s41467-024-55607-x)
 
 
 # Overview 
@@ -54,9 +55,9 @@ source("init.R")
 
 ### [init_age.R](https://github.com/SoniaRuiz/recount3-database-project/blob/main/init_age.R)
 
-The init_age.R script utilizes previously downloaded junction data from the GTEx project, stratifying samples by age before constructing a junction database. 
+The init_age.R script utilises previously downloaded junction data from the GTEx project, stratifying samples by age before constructing a junction database. 
 
-It starts the age sample clustering using the age groups "20-39", "40-59" and "60-79" years-old. Then, using the previously downloaded exon-exon junction data used for the creation of the Splicing database (init.R), this script clusters exon-exon split reads and count matrices across the samples of each age category. It pairs the split reads from the annotated category with the split reads from the novel donor and novel acceptor junctions across the samples of each age cluster at the tissue level. Finally, it creates the "Age Stratification" intron database.
+It starts the age sample clustering using the age groups "20-39", "40-59" and "60-79" years old. Then, using the previously downloaded exon-exon junction data used for the creation of the Splicing database (init.R), this script clusters exon-exon split reads and count matrices across the samples of each age category. It pairs the split reads from the annotated category with the split reads from the novel donor and novel acceptor junctions across the samples of each age cluster at the tissue level. Finally, it creates the "Age Stratification" intron database.
 
 ```R
 ## To run the age stratification of the GTEx samples, it is necessary to have downloaded, processed and databased the GTEx v8 junctions using the `init.R` script.
