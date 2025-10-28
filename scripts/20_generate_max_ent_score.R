@@ -13,14 +13,16 @@ GenerateMaxEntScore <- function(db.introns,
                                 max.ent.tool.path,
                                 bedtools.path,
                                 hs.fasta.path){
-  
-  
-  db.introns <- db.introns %>% dplyr::as_tibble()
+
+  logger::log_info("MaxEntScan score - extracting the sequences ...")  
+
+  db.introns_gr <- db.introns %>% GRanges()
+  seqlevelsStyle(db.introns_gr) <- "Ensembl"
+ 
+  db.introns <- db.introns_gr %>% dplyr::as_tibble()
   db.introns$seqnames <- db.introns$seqnames %>% as.character()
   
-  if (any(db.introns$seqnames == "M")) {
-    logger::log_info("Error! There's data for chr-MT!")
-  } 
+  if (any(db.introns$seqnames == "M")) { logger::log_info("Error! There's data for chr-MT!") } 
   
   ## 0. Prepare the object ---------------------------------------------------
   
@@ -59,23 +61,18 @@ GenerateMaxEntScore <- function(db.introns,
   tmp.file_seq <- tempfile()
   # print(paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
   #              tmp.file, " -tab -fo ", tmp.file_seq))
-  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
-                          tmp.file, " -tab -fo ", tmp.file_seq))
+  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ", tmp.file, " -tab -fo ", tmp.file_seq))
   donor_sequences_input <- read.delim(tmp.file_seq, header = F)
   head(donor_sequences_input)
   head(db.introns)
   
 
-  #stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(donor_sequences_input$V1)))),
-  #                    db.introns$junID %>% as.character()))
-  db.introns <- cbind(db.introns, 
-                     donor_sequence = as.character(donor_sequences_input$V2))
-  
+  stopifnot(identical(gsub("::.*$", "", as.character(donor_sequences_input$V1)), db.introns$junID %>% as.character()))
+  db.introns <- cbind(db.introns, donor_sequence = as.character(donor_sequences_input$V2))
   db.introns %>% head()
   
   
-  ## Get the acceptor genomic sequence
-  
+  ## Get the acceptor genomic sequence  
   to.BED <- data.frame(seqnames  =  db.introns$seqnames,
                        starts    =  as.integer(db.introns$AcceptorSeqStart),
                        ends      =  as.integer(db.introns$AcceptorSeqStop),
@@ -88,28 +85,25 @@ GenerateMaxEntScore <- function(db.introns,
   
   write.table(to.BED, file = tmp.file, quote = F, sep = "\t", row.names = F, col.names = F)
   tmp.file_seq <- tempfile()
-  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
-                          tmp.file, " -tab -fo ", tmp.file_seq))
+  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ", tmp.file, " -tab -fo ", tmp.file_seq))
   acceptor_sequences_input <- read.delim(tmp.file_seq, header = F)
   
   head(acceptor_sequences_input)
   head(donor_sequences_input)
   
-  #stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(acceptor_sequences_input$V1)))),
-  #                    db.introns$junID %>% as.character()))
-  db.introns <- cbind(db.introns,
-                     acceptor_sequence = as.character(acceptor_sequences_input$V2))
-  
+  ## Replaces everything (.*) from the '::' until the end of the string '$'
+  stopifnot(identical(gsub("::.*$", "", as.character(acceptor_sequences_input$V1)),db.introns$junID %>% as.character()))
+  db.introns <- cbind(db.introns, acceptor_sequence = as.character(acceptor_sequences_input$V2))
   db.introns %>% head()
   
   
   ## Remove temporary files
   rm(to.BED, tmp.file, tmp.file_seq)
   
-  
+
   
   ## 2. Generate the MaxEntScore --------------------------------------------------------------------
-  
+  logger::log_info("Generating MaxEntScan score for the donor sequences...")
   
   ## get the sequences
   tmp.file <- tempfile()
@@ -120,13 +114,13 @@ GenerateMaxEntScore <- function(db.introns,
   
   write.table(gsub("N","A",as.character(db.introns$donor_sequence)),file=tmp.file,row.names=F,col.names=F,quote=F)
   setwd(max.ent.tool.path)
-  ss5score <- read.delim(pipe(paste0("perl ", max.ent.tool.path, "score5.pl ", tmp.file)),header = F)
-  identical(as.character(ss5score$V1),gsub("N","A",as.character(db.introns$donor_sequence)))
+  ss5score <- read.delim(pipe(paste0("perl ", max.ent.tool.path, "score5.pl ", tmp.file)), header = F)
+  identical(as.character(ss5score$V1), gsub("N","A",as.character(db.introns$donor_sequence)))
   db.introns <- cbind(db.introns, ss5score = ss5score$V2)
   
-  logger::log_info("MaxEntScan score generated for the donor sequences!")
   
   
+  logger::log_info("Generating MaxEntScan score for the acceptor sequences...")
   ## get the maxentscan for the 3' splice site
   length(grep("N",as.character(db.introns$acceptor_sequence)))
   
@@ -134,10 +128,8 @@ GenerateMaxEntScore <- function(db.introns,
   ss3score <- read.delim(pipe(paste0("perl ", max.ent.tool.path, "/score3.pl ", tmp.file)),header = F)
   identical(as.character(ss3score$V1),gsub("N","A",as.character(db.introns$acceptor_sequence)))
   db.introns <- cbind(db.introns, ss3score = ss3score$V2)
-  
-  logger::log_info("MaxEntScan score generated for the acceptor sequences!")
-  
+    
   rm(ss5score, ss3score, tmp.file)
-  
+    
   return(db.introns)
 }

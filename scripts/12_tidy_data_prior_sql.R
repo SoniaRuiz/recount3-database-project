@@ -7,12 +7,12 @@
 #' @export
 #'
 #' @examples
-TidyDataPiorSQL <- function (recount3.project.IDs,
-                             database.folder,
-                             levelqc1.folder,
-                             results.folder,
-                             replace,
-                             all.clusters = NULL) {
+TidyDataPriorSQL <- function (recount3.project.IDs,
+                              database.folder,
+                              levelqc1.folder,
+                              results.folder,
+                              replace,
+                              all.clusters = NULL) {
   
   if (replace) {
     
@@ -27,7 +27,7 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
     
     all_split_reads_details_qc_level1 %>% nrow()
     all_split_reads_details_qc_level1 %>% head()
-    
+    all_split_reads_details_qc_level1 %>% dplyr::count(type)
     
     ############################################
     ## LOAD SPLIT READS QC LEVEL 2
@@ -39,7 +39,7 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
     
     all_split_reads_details_qc_level2 %>% nrow()
     all_split_reads_details_qc_level2 %>% head()
-    
+
     ## This should be zero
     if ( setdiff(all_split_reads_details_qc_level2$junID, all_split_reads_details_qc_level1$junID) %>% length() > 0) {
       stop("ERROR! Some of the annotated split reads that passed the 2nd QC level are not found within the split reads from the 1st QC level.");
@@ -77,17 +77,16 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
     ############################################ 
     
     ## LEVEL 1 SPLIT READS - Remove potential * in the junID of the reference introns
-    ind <- which(str_detect(string = all_split_reads_details_qc_level1$junID, pattern = "\\*"))
-    if (ind %>% length() > 0) {
-      all_split_reads_details_qc_level1[ind, "junID"] <- 
-        str_replace(string = all_split_reads_details_qc_level1[ind, "junID"]$junID, 
-                    pattern = "\\*", 
-                    replacement = all_split_reads_details_qc_level1[ind, "strand"]$strand %>% as.character() )
-      if (any(str_detect(all_split_reads_details_qc_level1$junID, pattern = "\\*"))) {
-        logger::log_info("ERROR!")
-        break;
-      }
-    }
+    # ind <- which(str_detect(string = all_split_reads_details_qc_level1$junID, pattern = "\\*"))
+    # if (ind %>% length() > 0) {
+    #   all_split_reads_details_qc_level1[ind, "junID"] <- 
+    #     str_replace(string = all_split_reads_details_qc_level1[ind, "junID"]$junID, 
+    #                 pattern = "\\*", 
+    #                 replacement = all_split_reads_details_qc_level1[ind, "strand"]$strand %>% as.character() )
+    #   if (any(str_detect(all_split_reads_details_qc_level1$junID, pattern = "\\*"))) {
+    #     stop("ERROR! LEVEL 1 SPLIT READS still contain '*' in the junID of the reference intron")
+    #   }
+    # }
     
     
     ## LEVEL 2 SPLIT READS - Remove potential * in the junID of the reference introns
@@ -97,13 +96,12 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
                                                                      pattern = "\\*", 
                                                                      replacement = all_split_reads_details_qc_level2[ind, "strand"]$strand %>% as.character() )
       if (any(str_detect(all_split_reads_details_qc_level2$junID, pattern = "\\*")) ) {
-        logger::log_info("ERROR!")
-        break;
+        stop("ERROR! LEVEL 2 SPLIT READS still contain '*' in the junID of the reference intron")
       }
     }
     
     
-    # ## These are the number of split reads from the samples excluded
+    # These are the number of split reads from the samples excluded
     setdiff(all_split_reads_details_qc_level1$junID, 
             all_split_reads_details_qc_level2$junID) %>% unique %>% length()
     
@@ -116,8 +114,7 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
                                                            pattern = "\\*", 
                                                            replacement = df_never_misspliced[ind, "strand"]$strand  %>% as.character())
       if (any(str_detect(df_never_misspliced$ref_junID, pattern = "\\*")) ) {
-        logger::log_info("ERROR!")
-        break;
+        stop("ERROR! NEVER MIS-SPLICED SPLIT READS still contain '*' in the junID of the reference intron")
       }
     }
     
@@ -129,8 +126,7 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
                                                            pattern = "\\*", 
                                                            replacement = df_all_jxn_pairings[ind, "ref_strand"]$ref_strand %>% as.character())
       if( any(str_detect(df_all_jxn_pairings$ref_junID, pattern = "\\*")) ) {
-        logger::log_info("ERROR!")
-        break;
+        stop("ERROR! SPLIT READS PAIRINGS still contain '*' in the junID of the reference intron")
       }
     }
     
@@ -141,8 +137,7 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
                                                              pattern = "\\*", 
                                                              replacement = df_all_jxn_pairings[ind, "novel_strand"]$novel_strand  %>% as.character())
       if (any(str_detect(df_all_jxn_pairings$novel_junID, pattern = "\\*")) ) {
-        logger::log_info("ERROR!")
-        break;
+        stop("ERROR! SPLIT READS PAIRINGS still contain '*' in the junID of the novel junction")
       }
     }
     
@@ -179,14 +174,12 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
     if ( ! identical(intersect(df_not_paired$junID, 
                                df_never_misspliced$ref_junID) %>% sort(), 
                      df_never_misspliced_tidy %>% distinct(ref_junID) %>% pull(ref_junID) %>% sort()) ) {
-      logger::log_info("ERROR! Some of the never mis-spliced junctions have not been found as not paired")
-      break;
+      stop("ERROR! Some of the never mis-spliced junctions have been found to be PAIRED!")
     }
     
     if (any(str_detect(df_never_misspliced_tidy$ref_junID, pattern = "\\*")) |
         any(str_detect(df_not_paired$junID, pattern = "\\*"))) {
-      logger::log_info("ERROR!")
-      break;
+      stop("ERROR! Still '*' on the strand")
     }
     
     ## All never mis-spliced should be categorised as not paired.
@@ -197,7 +190,7 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
                     df_not_paired %>% dplyr::filter(type == "annotated") %>% pull(junID)) %>% length() == 0)
     )
     
-    ## Separate the never mis-spliced from the non-paired junctions
+    ## Separate the non-paired junctions from the never mis-spliced
     df_not_paired_tidy <- df_not_paired %>%
       dplyr::filter(!(junID %in% df_never_misspliced_tidy$ref_junID)) %>%
       distinct(junID, .keep_all = T) %>%
@@ -252,6 +245,8 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
     
     
     ## 1. Obtain the ambiguous junctions
+    ## These are the novel junctions that have been paired with different introns across the samples
+    
     df_ambiguous_novel <- df_all_jxn_pairings %>%
       dplyr::filter(!(novel_junID %in% df_not_paired_tidy$junID),
                     !(ref_junID %in% df_not_paired_tidy$junID),
@@ -261,37 +256,50 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
       dplyr::filter(distances_sd > 0) %>% 
       ungroup() 
     
+
+    ## 2. Rescue novel junctions that can be re-assigned to i) the most expressed reference intron and, if equally expressed, ii) to the closest ref intron
     
-    ## This is the number of ambiguous novel junctions to remove
-    df_ambiguous_novel %>% ungroup() %>% distinct(novel_junID)
+    df_reassigned_ambig_novel_by_reads <- df_ambiguous_novel %>%
+      dplyr::group_by(novel_junID) %>%
+      mutate(ref_chosen = ifelse(ref_counts == max(ref_counts), TRUE, FALSE)) %>% # Assign the reference intron with the highest number of reads
+      ungroup() %>% 
+      filter(ref_chosen == TRUE)
+
+    df_reassigned_ambig_novel_by_reads_n_distance <- df_reassigned_ambig_novel_by_reads %>%
+      dplyr::group_by(novel_junID) %>%
+      mutate(ref_chosen = ifelse(abs(distance) == min(abs(distance)), TRUE, FALSE)) %>% # Assign the reference intron with the closest distance
+      ungroup() %>% 
+      filter(ref_chosen == TRUE)
+
+    df_reassigned_ambig_novel_final <- df_reassigned_ambig_novel_by_reads_n_distance %>%
+      dplyr::group_by(novel_junID) %>%
+      mutate(ref_chosen = ifelse(distance == min(distance), TRUE, FALSE)) %>% # Assign the reference intron with the closest distance
+      ungroup() %>% 
+      filter(ref_chosen == TRUE)
+
     
-    
-    ## 2. Remove ambiguous junctions
+    ## 3. Re-assign ambiguous junctions
     df_all_jxn_pairings_tidy <- df_all_jxn_pairings %>%
       dplyr::filter(!(novel_junID %in% df_ambiguous_novel$novel_junID)) %>%
       distinct(novel_junID, ref_junID, .keep_all = T) %>%
       mutate(ref_strand = ref_strand %>% as.character(),
              novel_strand = novel_strand %>% as.character()) 
-    
+
+    df_all_jxn_pairings_tidy <- rbind(df_all_jxn_pairings_tidy, 
+                                      df_reassigned_ambig_novel_final %>% dplyr::select(-ref_chosen, -distances_sd))
     
     ## Introns may parent multiple novel junctions. Hence, annotated introns that are left orphaned after
-    ## removing the ambiguous novel junctions are:
+    ## re-assingning the chosen ref intron to the ambiguous novel junctions are:
     (df_ambiguous_novel %>% 
-        ungroup() %>%
-        distinct(ref_junID) %>% nrow()) - (intersect(c(df_all_jxn_pairings_tidy$novel_junID,
-                                                       df_all_jxn_pairings_tidy$ref_junID),
-                                                     df_ambiguous_novel %>% 
-                                                       ungroup() %>%
-                                                       distinct(ref_junID) %>% pull) %>% length())
+        distinct(ref_junID) %>% nrow()) - (intersect(c(df_all_jxn_pairings_tidy$novel_junID, df_all_jxn_pairings_tidy$ref_junID),
+                                                     df_ambiguous_novel$ref_junID %>% unique) %>% length())
     
     ## 3. Get ambiguous figures and stats
     ## This is the number of unique novel junctions to be stored in the DB
-    df_all_jxn_pairings_tidy %>%
-      dplyr::distinct(novel_junID)
+    df_all_jxn_pairings_tidy %>% dplyr::distinct(novel_junID)
     
     # This is the number of unique introns to be stored inth DB
-    df_all_jxn_pairings_tidy %>%
-      dplyr::distinct(ref_junID)
+    df_all_jxn_pairings_tidy %>% dplyr::distinct(ref_junID)
     
     ## If we include the number of never mis-spliced junctions, the final number
     ## of junctions to be stored within the DB is:
@@ -312,51 +320,46 @@ TidyDataPiorSQL <- function (recount3.project.IDs,
     
     logger::log_info("Saving results ...")
     
-    ## 1. DISTANCES PAIRINGS
-    
+    ## 1. DISTANCES PAIRINGS    
     if (any(str_detect(string = df_all_jxn_pairings_tidy$ref_junID, pattern = "\\*")) |
         any(str_detect(string = df_all_jxn_pairings_tidy$novel_junID, pattern = "\\*")) ) {
       stop("ERROR! Some junctions still have a '*' within their IDs!")
     }
-    df_all_jxn_pairings_tidy <- df_all_jxn_pairings_tidy %>%
-      inner_join(y = all_split_reads_details_qc_level2 %>% dplyr::select(junID, gene_id, tx_id_junction), by = c("ref_junID" = "junID"))
-    saveRDS(object = df_all_jxn_pairings_tidy, file = paste0(database.folder, "/all_jxn_correct_pairings.rds"))
+    df_all_jxn_pairings_tidy %>%
+      inner_join(y = all_split_reads_details_qc_level2 %>% dplyr::select(junID, gene_id, tx_id_junction), 
+      by = c("ref_junID" = "junID")) %>%
+      saveRDS(object = ., file = file.path(database.folder, "all_jxn_correct_pairings.rds"))
     
     
-    ## 2. NEVER MIS-SPLICED
-    
+    ## 2. NEVER MIS-SPLICED    
     if (any(str_detect(string = df_never_misspliced_tidy$ref_junID, pattern = "\\*")) ) {
       stop("ERROR! Some NEVER MIS-SPLICED junctions still have a '*' in their IDs!")
     }
-    df_never_misspliced_tidy <- df_never_misspliced_tidy %>%
+    df_never_misspliced_tidy %>%
       dplyr::select(ref_junID) %>%
       inner_join(y = all_split_reads_details_qc_level2 %>% dplyr::select(junID, seqnames, start, end, width, strand, gene_id, tx_id_junction),
-                 by = c("ref_junID" = "junID"))
-    saveRDS(object = df_never_misspliced_tidy, file = paste0(database.folder, "/all_jxn_never_misspliced.rds"))
+                 by = c("ref_junID" = "junID")) %>%
+      saveRDS(object = ., file = file.path(database.folder, "all_jxn_never_misspliced.rds"))
     
     
-    ## 3. AMBIGUOUS JUNCTIONS
+    # ## 3. AMBIGUOUS JUNCTIONS    
+    # if (any(str_detect(string = df_ambiguous_novel$ref_junID, pattern = "\\*")) |
+    #     any(str_detect(string = df_ambiguous_novel$novel_junID, pattern = "\\*")) ) {
+    #   stop("ERROR! Some junctions still have a * in their IDs!")
+    # }
+    # saveRDS(object = df_ambiguous_novel %>% dplyr::select(ref_junID) %>%
+    #           inner_join(y = all_split_reads_details_qc_level2 %>% dplyr::select(junID, seqnames, start, end, width, strand, gene_id, tx_id_junction), by = c("ref_junID" = "junID")),
+    #         file = paste0(database.folder, "/all_jxn_ambiguous_pairings.rds"))
+        
     
-    if (any(str_detect(string = df_ambiguous_novel$ref_junID, pattern = "\\*")) |
-        any(str_detect(string = df_ambiguous_novel$novel_junID, pattern = "\\*")) ) {
-      stop("ERROR! Some junctions still have a * in their IDs!")
-    }
-    
-    
-    saveRDS(object = df_ambiguous_novel %>% dplyr::select(ref_junID) %>%
-              inner_join(y = all_split_reads_details_qc_level2 %>% dplyr::select(junID, seqnames, start, end, width, strand, gene_id, tx_id_junction),
-                         by = c("ref_junID" = "junID")),
-            file = paste0(database.folder, "/all_jxn_ambiguous_pairings.rds"))
-    
-    
-    
-    ## 4. NOT PAIRED JUNCTIONS
-    
+    ## 3. NOT PAIRED JUNCTIONS
     if ( any(str_detect(string = df_not_paired_tidy %>% filter(type == "annotated") %>% pull(junID), pattern = "\\*")) ) {
       stop("ERROR! Some NOT PAIRED INTRONS still have a * in their IDs!")
     }
-    saveRDS(df_not_paired_tidy %>% filter(type == "annotated") %>% dplyr::select(ref_junID = junID, seqnames, start, end, width, strand, gene_id, tx_id_junction) ,
-            file = paste0(database.folder, "/all_jxn_not_paired.rds"))
+    df_not_paired_tidy %>% 
+      filter(type == "annotated") %>% 
+      dplyr::select(ref_junID = junID, seqnames, start, end, width, strand, gene_id, tx_id_junction) %>%
+      saveRDS(., file = file.path(database.folder, "all_jxn_not_paired.rds"))
   }
   
 }

@@ -107,7 +107,7 @@ RemoveUncategorizedJunctions <- function(input.SR.details) {
   
   ## Only use annotated introns, novel donor and novel acceptor junctions
   output_SR_details <- input.SR.details %>%
-    filter(type %in% c("annotated", "novel_donor", "novel_acceptor", "novel_combo", "novel_exon_skip"))
+    filter(!(type %in% c("unannotated"))) #"annotated", "novel_donor", "novel_acceptor", "novel_combo", "novel_exon_skip"
   
   return(output_SR_details)
   
@@ -118,25 +118,27 @@ RemoveUncategorizedJunctions <- function(input.SR.details) {
 #'
 #' @param input_SR_details Dataframe object with the relevant junctions.
 #'
-#' @return Junctions assigned to only one gene.
+#' @return Datagrame object of junctions with an additional column indicating whether the jxn presents ambiguity or not 
+#' ie ambiguity = the jxn has been annotated to more than one single gene
 #' @export
 RemoveAmbiguousJunctions <- function(input.SR.details, database.folder) {
   
-  logger::log_info("Removing junctions associated to more than one gene.")
+  logger::log_info("Removing junctions associated to more than one gene...")
 
   input.SR.details <- input.SR.details %>%
     as_tibble() %>%
     distinct(junID, .keep_all = T) %>% 
     rowwise() %>%
-    mutate(ambiguous = ifelse(gene_id_junction %>% unlist() %>% length() > 1, T, F))
+    mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, T, F)) %>%
+    return()
   
-  ambiguous_introns <- input.SR.details %>% dplyr::filter(ambiguous == T)
+  ambiguous_introns <- input.SR.details %>% dplyr::filter(ambiguous == TRUE)
   
-  logger::log_info("Removing ", nrow(ambiguous_introns)," ambiguous junctions!")
+  logger::log_info("There are ", nrow(ambiguous_introns)," ambiguous junctions!")
   
   saveRDS(object = ambiguous_introns, file = file.path(database.folder, "all_ambiguous_jxn.rds"))
   
-  return(input.SR.details %>% filter(ambiguous == F))
+  return(input.SR.details)
   
 }
 

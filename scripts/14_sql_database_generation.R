@@ -5,7 +5,7 @@
 #' @param database.sqlite Path to the .sql database file
 #' @param recount3.project.IDs List of recount3 projects to analyse
 #' @param project.name Name given to the project 
-#' @param gtf.version Version of the reference transcriptome to use. In this case it has been used '105' corresponding
+#' @param gtf.path Version of the reference transcriptome to use. In this case it has been used '105' corresponding
 #' to Ensembl v105
 #' @param remove.all Boolean to reset the database (i.e. whether all tables of the database should be removed)
 #'
@@ -18,7 +18,7 @@ SqlDatabaseGeneration <- function(database.sqlite,
                                   database.folder,
                                   results.folder,
                                   dependencies.folder,
-                                  gtf.version,
+                                  gtf.path,
                                   max.ent.tool.path,
                                   bedtools.path,
                                   hs.fasta.path,
@@ -42,11 +42,11 @@ SqlDatabaseGeneration <- function(database.sqlite,
   }
   
   
-  if (!any(tables %in% c('metadata', 'intron', 'novel', 'gene', 'transcript', 'combo'))) {
+  if (!all(c('metadata', 'intron', 'novel', 'gene', 'transcript', 'combo') %in% tables)) {
     
     logger::log_info("Creating master tables ...")
     SqlCreateMasterTables(database.sqlite = database.sqlite,
-                          gtf.version = gtf.version,
+                          gtf.path = gtf.path,
                           database.folder = database.folder,
                           results.folder = results.folder,
                           dependencies.folder = dependencies.folder,
@@ -63,7 +63,7 @@ SqlDatabaseGeneration <- function(database.sqlite,
     tables %>% print()
     
   } else {
-    logger::log_info("master tables exist!")
+    logger::log_info("All master tables exist!")
   }
   
   logger::log_info("Creating child tables ...")

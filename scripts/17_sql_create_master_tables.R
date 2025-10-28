@@ -2,7 +2,7 @@
 #' Title
 #' Creates the 'intron' and 'novel' master tables
 #' @param database.sqlite 
-#' @param gtf.version 
+#' @param gtf.path 
 #' @param database.folder 
 #' @param results.folder 
 #'
@@ -11,7 +11,7 @@
 #'
 #' @examples
 SqlCreateMasterTables <- function(database.sqlite,
-                                  gtf.version,
+                                  gtf.path,
                                   database.folder,
                                   results.folder,
                                   dependencies.folder,
@@ -26,9 +26,9 @@ SqlCreateMasterTables <- function(database.sqlite,
   
   ## A) CREATE MASTER 'METADATA' TABLE -----------------------------------------
   
-  SqlCreateMasterTableMetadata(database.sqlite,
-                               recount3.project.IDs,
-                               results.folder)
+  # SqlCreateMasterTableMetadata(database.sqlite,
+  #                              recount3.project.IDs,
+  #                              results.folder)
   
   
   
@@ -37,34 +37,34 @@ SqlCreateMasterTables <- function(database.sqlite,
 
   ## B) CREATE MASTER 'INTRON' TABLE -------------------------------------------
 
-  SqlCreateMasterTableIntron(database.sqlite,
-                             gtf.version,
-                             database.folder,
-                             results.folder,
-                             dependencies.folder,
-                             max.ent.tool.path,
-                             bedtools.path,
-                             hs.fasta.path,
-                             phastcons.bw.path,
-                             cdts.bw.path, 
-                             discard.minor.introns = F)
+  # SqlCreateMasterTableIntron(database.sqlite,
+  #                            gtf.path,
+  #                            database.folder,
+  #                            results.folder,
+  #                            dependencies.folder,
+  #                            max.ent.tool.path,
+  #                            bedtools.path,
+  #                            hs.fasta.path,
+  #                            phastcons.bw.path,
+  #                            cdts.bw.path, 
+  #                            discard.minor.introns)
   
 
   
   ## C) CREATE MASTER 'NOVEL' TABLE
   ## It contains novel 5' and 3' splicing events -------------------------------
 
-  SqlCreateMasterTableNovel(database.sqlite,
-                            gtf.version,
-                            database.folder,
-                            results.folder,
-                            dependencies.folder,
-                            max.ent.tool.path,
-                            bedtools.path,
-                            hs.fasta.path,
-                            phastcons.bw.path,
-                            cdts.bw.path, 
-                            discard.minor.introns = F)
+  # SqlCreateMasterTableNovel(database.sqlite,
+  #                           gtf.path,
+  #                           database.folder,
+  #                           results.folder,
+  #                           dependencies.folder,
+  #                           max.ent.tool.path,
+  #                           bedtools.path,
+  #                           hs.fasta.path,
+  #                           phastcons.bw.path,
+  #                           cdts.bw.path, 
+  #                           discard.minor.introns)
   
   
   
@@ -87,7 +87,7 @@ SqlCreateMasterTables <- function(database.sqlite,
   
   SqlCreateBridgeTablewTranscript(database.sqlite = database.sqlite,
                                   database.folder = database.folder,
-                                  bridge.table.name = "bridge_combo_transcript",
+                                  bridge.table.name = "combo_bridge_transcript",
                                   origin.master.table = "combo")
   
   
@@ -98,7 +98,7 @@ SqlCreateMasterTables <- function(database.sqlite,
   
   SqlCreateBridgeTablewTranscript(database.sqlite = database.sqlite,
                                   database.folder = database.folder,
-                                  bridge.table.name = "bridge_intron_transcript",
+                                  bridge.table.name = "intron_bridge_transcript",
                                   origin.master.table = "intron")
   
   
@@ -126,18 +126,20 @@ SqlCreateMasterTableMetadata <- function(database.sqlite,
   df_metadata <- map_df(recount3.project.IDs, function(project_id) {
     
     # project_id <- recount3.project.IDs[1]
-    # project_id <- recount3.project.IDs[2]
-    # project_id <- recount3.project.IDs[5]
-    # project_id <- "TARDBP"
     
     logger::log_info("getting metadata info from ", project_id, "...")
     
     if (file.exists(paste0(results.folder, "/", project_id, "/base_data/", project_id, "_clusters_used.rds"))) {
+      
       if (str_detect(database.sqlite, pattern = "age")) {
         ## Age stratification
         metadata_file <- paste0(results.folder, "/", project_id, "/base_data/", project_id,"_age_samples_metadata.rds") 
       } else {
-        metadata_file <- paste0(results.folder, "/", project_id, "/base_data/", project_id,"_samples_metadata.rds") 
+        if (file.exists(paste0(results.folder, "/", project_id, "/base_data/", project_id,"_samples_metadata.rds"))) {
+          metadata_file <- paste0(results.folder, "/", project_id, "/base_data/", project_id,"_samples_metadata.rds")  
+        } else {
+          metadata_file <- paste0(results.folder, "/", project_id, "/base_data/", project_id,"_samples_raw_metadata.rds") 
+        }        
       }
       
       if (file.exists(metadata_file)) {
@@ -147,6 +149,12 @@ SqlCreateMasterTableMetadata <- function(database.sqlite,
         if (any(names(metadata_file) == "id")) {
           metadata_file <- metadata_file %>% dplyr::select(-id)
         }
+        if (str_detect(database.sqlite, pattern = "ROSMAP")) {
+          metadata_file <- metadata_file %>% 
+            mutate(cluster = cogdx) %>%
+            mutate(sample_id = synapseID)
+
+        } 
           
         
         metadata_file %>% return()
@@ -173,6 +181,7 @@ SqlCreateMasterTableMetadata <- function(database.sqlite,
   DBI::dbClearResult(res)
   
   
+  
   ## Populate table ------------------------------------------------------
   DBI::dbAppendTable(conn = con, 
                      name = "metadata", 
@@ -193,7 +202,7 @@ SqlCreateMasterTableMetadata <- function(database.sqlite,
 #' Creates the master 'Intron' table, which stores information about all annotated introns found
 #' across all samples studied
 #' @param database.sqlite 
-#' @param gtf.version 
+#' @param gtf.path 
 #' @param database.folder 
 #' @param results.folder 
 #' @param dependencies.folder 
@@ -204,7 +213,7 @@ SqlCreateMasterTableMetadata <- function(database.sqlite,
 #'
 #' @examples
 SqlCreateMasterTableIntron <- function(database.sqlite,
-                                       gtf.version,
+                                       gtf.path,
                                        database.folder,
                                        results.folder,
                                        dependencies.folder,
@@ -225,10 +234,9 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   if (file.exists(file.path(database.folder, "all_jxn_correct_pairings.rds"))) {
     logger::log_info("Loading the pre-generated data...")
     df_all_distances_pairings <- readRDS(file = file.path(database.folder, "all_jxn_correct_pairings.rds"))
-    df_ambiguous_novel <- readRDS(file = file.path(database.folder, "all_jxn_ambiguous_pairings.rds"))
+    #df_ambiguous_novel <- readRDS(file = file.path(database.folder, "all_jxn_ambiguous_pairings.rds"))
     df_introns_never <- readRDS(file = file.path(database.folder, "all_jxn_never_misspliced.rds"))
     df_introns_not_paired <- readRDS(file = file.path(database.folder, "all_jxn_not_paired.rds"))
-    df_all_novel_combos <- readRDS(file = file.path(database.folder, "all_raw_novel_combos.rds"))
   } else {
     stop("ERROR loading file dependencies!")
   }
@@ -242,21 +250,20 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   
   df_all_introns <- df_all_distances_pairings %>%
     distinct(ref_junID, .keep_all = T) %>%
-    mutate(misspliced = "Yes") %>%
+    mutate(misspliced = TRUE) %>%
     dplyr::select(ref_junID, seqnames = ref_seq, start = ref_start, strand = ref_strand,
                   end = ref_end, gene_id, tx_id_junction, misspliced) %>%
     GRanges() %>% ## This is to get the width() as calculated by GRanges
     as_tibble()
   
   logger::log_info("getting never mis-spliced introns...")
-  
-  
+    
   ## Remove potential * in the junID of the reference introns
   if (any(str_detect(string = df_introns_never$ref_junID, pattern = "\\*"))) {
     stop("ERROR! some never mis-spliced junctions still have an *!")
   }
   
-  df_introns_never_tidy <- df_introns_never %>% as_tibble() %>% mutate(misspliced = "No") 
+  df_introns_never_tidy <- df_introns_never %>% as_tibble() %>% mutate(misspliced = FALSE) 
   
   logger::log_info("getting the not paired mis-spliced introns...")
   
@@ -265,26 +272,25 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
     stop("ERROR! some never mis-spliced junctions still have an *!")
   }
   
-  df_introns_not_paired_tidy <- df_introns_not_paired %>% as_tibble() %>%
-    mutate(misspliced = "Potentially") 
+  df_introns_not_paired_tidy <- df_introns_not_paired %>% as_tibble() %>% mutate(misspliced = FALSE) 
   
   if (intersect(df_introns_not_paired_tidy$ref_junID, df_all_introns$ref_junID) %>% length() > 0) {
     stop("ERROR! Non-paired introns classified as paired!")
   }
   
-  df_introns_parenting_ambiguous <- df_ambiguous_novel %>% 
-    as_tibble() %>%
-    mutate(misspliced = "Potentially") %>%
-    dplyr::filter(!(ref_junID %in% df_all_introns$ref_junID)) %>%
-    distinct(ref_junID, .keep_all=T)
+  # df_introns_parenting_ambiguous <- df_ambiguous_novel %>% 
+  #   as_tibble() %>%
+  #   mutate(misspliced = "Potentially") %>%
+  #   dplyr::filter(!(ref_junID %in% df_all_introns$ref_junID)) %>%
+  #   distinct(ref_junID, .keep_all=T)
   
   ## QC
-  if (intersect(df_introns_parenting_ambiguous$ref_junID, df_introns_not_paired_tidy$ref_junID) %>% length() > 0) {
-    stop("ERROR! Introns parenting ambiguous junctions are classified as non-paired introns!")
-  }
-  if (intersect(df_introns_parenting_ambiguous$ref_junID, df_all_introns$ref_junID) %>% length() > 0) {
-    stop("ERROR! Introns parenting ambiguous junctions are classified as paired introns!")
-  }
+  # if (intersect(df_introns_parenting_ambiguous$ref_junID, df_introns_not_paired_tidy$ref_junID) %>% length() > 0) {
+  #   stop("ERROR! Introns parenting ambiguous junctions are classified as non-paired introns!")
+  # }
+  # if (intersect(df_introns_parenting_ambiguous$ref_junID, df_all_introns$ref_junID) %>% length() > 0) {
+  #   stop("ERROR! Introns parenting ambiguous junctions are classified as paired introns!")
+  # }
   if (any(df_all_introns$width %>% abs() < 25)) {
     stop("ERROR! some mis-spliced introns are shorter than 25bp!")
   }
@@ -294,9 +300,9 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   if (any(df_introns_not_paired_tidy$width %>% abs() < 25)) {
     stop("ERROR! some POTENTIALLY mis-spliced introns are shorter than 25bp!")
   }
-  if (any(df_introns_parenting_ambiguous$width %>% abs() < 25)) {
-    stop("ERROR! some POTENTIALLY mis-spliced introns are shorter than 25bp!")
-  }
+  # if (any(df_introns_parenting_ambiguous$width %>% abs() < 25)) {
+  #   stop("ERROR! some POTENTIALLY mis-spliced introns are shorter than 25bp!")
+  # }
   if (intersect(df_introns_never_tidy$ref_junID, df_all_introns$ref_junID) %>% length() > 0) {
     stop("ERROR! some never mis-spliced introns are mis-spliced!")
   }
@@ -306,8 +312,9 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   ## END QC
   
   ## Merge the different types of annotated introns
-  df_introns_introverse <- rbind(df_introns_never_tidy, df_introns_not_paired_tidy, 
-                                 df_introns_parenting_ambiguous, df_all_introns)
+  df_introns_introverse <- rbind(df_introns_never_tidy, 
+                                 df_introns_not_paired_tidy,
+                                 df_all_introns)
   
   if (any(str_detect(string = df_introns_introverse$ref_junID, pattern = "\\*" ))) {
     stop("ERROR! Some introns still have an ambiguous '*' strand!")
@@ -326,10 +333,10 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   df_introns_introverse_tidy <- df_introns_introverse %>%
     distinct(ref_junID, .keep_all = T) %>% 
     rowwise() %>%
-    mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, T, F))
+    mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, TRUE, F))
   
   ## There should not be any ambiguous introns at this point
-  if (any(df_introns_introverse_tidy %>% dplyr::filter(ambiguous == T) %>% nrow() > 0)) {
+  if (any(df_introns_introverse_tidy %>% dplyr::filter(ambiguous == TRUE) %>% nrow() > 0)) {
     stop("ERROR! Still there are some ambiguous introns")
   } else {
     df_introns_introverse_tidy <- df_introns_introverse_tidy %>% dplyr::select(-ambiguous)
@@ -341,15 +348,23 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   ## GENES - CREATE GENE TABLE
   ######################################
   
-  all_gene_ids <- c(df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
-                    df_all_novel_combos %>% unnest(gene_id) %>% distinct(gene_id)) %>% unlist %>% unique() %>% sort
+  # Load additional info required to calculated all gene names across the database
+  df_all_novel_combos <- readRDS(file = file.path(database.folder, "all_raw_novel_combos.rds"))
+  df_all_ambiguous <- readRDS(file = file.path(database.folder, "all_raw_ambiguous.rds"))
+  df_all_unannotated <- readRDS(file = file.path(database.folder, "all_raw_novel_unannotated.rds"))
+
+  all_gene_IDs <- c(df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
+                    df_all_novel_combos %>% unnest(gene_id) %>% distinct(gene_id),
+                    df_all_ambiguous %>% unnest(gene_id) %>% distinct(gene_id),
+                    df_all_unannotated %>% unnest(gene_id) %>% distinct(gene_id)) %>% 
+                  unlist %>% unique() %>% sort
   
   # logger::log_info("loading GRCh38 reference...")
   
-  hg38_tidy <- rtracklayer::import(con = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.", gtf.version, ".chr.gtf")) %>% 
+  hg38_tidy <- rtracklayer::import(con = gtf.path) %>% 
     as_tibble() %>% 
     mutate(gene_id = str_sub(gene_id, start = 1, end = 15)) %>%
-    dplyr::filter(gene_id %in% all_gene_ids)
+    dplyr::filter(gene_id %in% all_gene_IDs)
   
   SqlCreateMasterTableGene(database.sqlite = database.sqlite, 
                            hg38 = hg38_tidy)
@@ -358,50 +373,93 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   ## TX_JUNCTION - CREATE TX TABLE
   ######################################
   
-  all_tx_ids <- c(df_introns_introverse_tidy %>% unnest(tx_id_junction) %>% distinct(tx_id_junction),
-                  df_all_novel_combos %>% unnest(tx_id_junction) %>% distinct(tx_id_junction)) %>% unlist %>% unique() %>% sort()
-  
+  all_tx_IDs <- c(df_introns_introverse_tidy %>% unnest(tx_id_junction) %>% distinct(tx_id_junction),
+                  df_all_novel_combos %>% unnest(tx_id_junction) %>% distinct(tx_id_junction),
+                  df_all_ambiguous %>% unnest(tx_id_junction) %>% distinct(tx_id_junction),
+                  df_all_unannotated %>% unnest(tx_id_junction) %>% distinct(tx_id_junction)) %>% 
+                unlist %>% unique() %>% sort()
+
   SqlCreateMasterTableTranscript(database.sqlite,
                                  hg38 = hg38_tidy,
-                                 gene.ids = all_gene_ids,
+                                 gene.ids = all_gene_IDs,
                                  dependencies.folder, 
-                                 tx.ids = all_tx_ids)
-  rm(all_tx_ids)
+                                 tx.ids = all_tx_IDs)
+
   rm(hg38_tidy)
-  rm(all_gene_ids)
+  rm(all_tx_IDs)
+  rm(all_gene_IDs)
+  rm(df_all_ambiguous)
+  rm(df_all_unannotated)
+  rm(df_all_novel_combos)
+  gc()
+
+
+  ######################################
+  ## INTRONS - ADD miRNA INFO 
+  ######################################
+  logger::log_info("Adding microRNA info...")
+  df_introns_introverse_gr <- AddMicroRNAInfo(df_introns_introverse_tidy %>% GRanges)
+  message(df_introns_introverse_gr %>% as_tibble %>% filter(is_miRNA == TRUE) %>% nrow,
+          " introns overlapping microRNA sequences")
+
+  ######################################
+  ## INTRONS - ADD circular RNA INFO 
+  ######################################
+
+  logger::log_info("Adding circularRNA info...")
+  df_introns_introverse_gr <- AddCircularRNAInfo(df_introns_introverse_gr)
+  message(df_introns_introverse_gr %>% as_tibble %>% filter(is_ciRNA == T) %>% nrow,
+          " introns overlapping cirRNA sequences")
+
+  ######################################
+  ## INTRONS - ADD UTR INFO 
+  ######################################
+
+  logger::log_info("Adding UTR info...")
+  df_introns_introverse_gr <- AddUTRInfo(df_introns_introverse_gr)
+  message(df_introns_introverse_gr %>% as_tibble %>% filter(is_utr == T) %>% nrow,
+          " introns located within UTR sequences")
+
+  
+
+  df_introns_introverse_tb <- df_introns_introverse_gr %>% as_tibble()
+  rm(df_introns_introverse_gr)
   gc()
 
   ######################################
   ## INTRONS - ADD MAXENTSCAN INFO 
   ######################################
   
-  logger::log_info("adding the MaxEntScan info ...")
+  logger::log_info("adding MaxEntScan info ...")
   
   wd <- getwd()
-  #print(file.path(dependencies.folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
+  
   if (!file.exists(file.path(dependencies.folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"))) {
     stop("ERROR! File dependency 'Homo_sapiens.GRCh38.dna.primary_assembly.fa' does not exist within the specified dependencies folder.")
   } 
   
   ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- GenerateMaxEntScore(db.introns = df_introns_introverse_tidy %>% dplyr::rename(junID = ref_junID) %>% distinct(junID, .keep_all = T),
-                                              max.ent.tool.path,
-                                              bedtools.path,
-                                              hs.fasta.path)
+  df_introns_introverse_ME <- GenerateMaxEntScore(db.introns = df_introns_introverse_tb %>% dplyr::rename(junID = ref_junID) %>% distinct(junID, .keep_all = T),
+                                                  max.ent.tool.path,
+                                                  bedtools.path,
+                                                  hs.fasta.path)
   rm(df_introns_introverse_tidy)
   gc()
   
-  all_split_reads_tidy <- all_split_reads_tidy %>% as_tibble() %>% 
+  df_introns_introverse_ME_gr <- df_introns_introverse_ME %>% 
+    as_tibble() %>% 
     dplyr::select(-c(donorSeqStart, donorSeqStop, AcceptorSeqStart, AcceptorSeqStop)) %>%
-    dplyr::rename(ref_donor_sequence = donor_sequence, ref_acceptor_sequence = acceptor_sequence)
+    dplyr::rename(ref_donor_sequence = donor_sequence, ref_acceptor_sequence = acceptor_sequence) %>%
+    GRanges()
+
+  mcols(df_introns_introverse_ME_gr)[["ref_junID"]] <- as.character(df_introns_introverse_ME_gr)
   
   setwd(wd)
+    
+  if ((setdiff(df_introns_introverse_ME_gr$junID, df_introns_introverse_ME_gr$ref_junID) %>% length()) > 0) {stop("ERROR! Junction coordinates have been mixed up!")}
   
-  df_all_introns <- all_split_reads_tidy %>%  mutate(ref_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
-  
-  if ((setdiff(df_all_introns$junID, df_all_introns$ref_junID) %>% length()) > 0) {stop("ERROR! Junction coordinates have been mixed!")}
-  
-  df_all_introns_gr <- df_all_introns %>%
+  df_all_introns_gr <- df_introns_introverse_ME_gr %>% 
+    as_tibble %>%
     dplyr::select(-one_of("junID", "ref_ss5score", "ref_ss3score")) %>% 
     dplyr::rename(ref_mes5ss = ss5score, ref_mes3ss = ss3score) %>%
     dplyr::relocate(ref_junID) %>%
@@ -409,14 +467,17 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
     distinct(ref_junID, .keep_all = T) %>% 
     dplyr::rename("junID" = "ref_junID") %>% 
     GRanges()
-  
+
+  ##rm(df_introns_introverse_ME_gr)
+  #gc()
+
   ################################################
   ## INTRONS - ADD THE CONSERVATION AND CDTS INFO
   ################################################
   
   logger::log_info("adding CDTS and Conservation scores...")
   
-  seqlevelsStyle(df_all_introns_gr) <- "UCSC"
+  seqlevelsStyle(df_all_introns_gr) <- "Ensembl"
   df_all_introns_gr <- GenerateCdtsPhastconsScores(dependencies.folder = dependencies.folder,
                                                    phastcons.bw.path = phastcons.bw.path,
                                                    cdts.bw.path = cdts.bw.path,
@@ -433,7 +494,7 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   
   logger::log_info("adding the ClinVar data...")
   df_all_introns_gr <- AddClinvarData(db.introns = df_all_introns, dependencies.folder = dependencies.folder)
-  
+  df_all_introns_gr %>% as_tibble %>% dplyr::count(clinvar)
   rm(df_all_introns)
   gc()
   
@@ -448,7 +509,7 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   ## Load intron U12 type file and convert to GRanges
   u12_introns <- rtracklayer::import(file.path(dependencies.folder, "GRCh38_U12.bed"), format = "bed")
   u12_introns_gr <- as(u12_introns, "GRanges")
-  seqlevelsStyle(u12_introns_gr) <- "UCSC"
+  seqlevelsStyle(u12_introns_gr) <- "Ensembl"
   
   ## Add a new column to incorporate info about intron type
   elementMetadata(df_all_introns_gr)[, "u2_intron"] = T
@@ -470,13 +531,14 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   
   ## Discard introns spliced out by the minor spliceosome. Comment out to avoid applying this filter.
   df_all_introns_tidy <- df_all_introns_gr %>% as_tibble()
-  rm(df_all_introns_gr)
+  #rm(df_all_introns_gr)
   
   if (discard.minor.introns) {
     df_all_introns_tidy <- df_all_introns_tidy %>% filter(u2_intron == T) %>% dplyr::select(-u2_intron)
   }
   
   logger::log_info(df_all_introns_tidy$ref_junID %>% unique %>% length(), " introns to be stored!")
+  #df_all_introns_tidy <- df_all_introns_tidy %>% as_tibble() %>% dplyr::rename("ref_junID" = "junID") %>% mutate_if(is.numeric, ~replace_na(., 0))
   
   #########################################
   ## INTRONS - ADD THE % TRANSCRIPT BIOTYPE
@@ -486,7 +548,7 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   
   df_biotype_junID <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds")) %>% as_tibble()
   
-  if (any(str_detect(df_biotype_junID$junID, pattern = "\\*"))) { stop("Still junctions with * as strand!") }
+  #if (any(str_detect(df_biotype_junID$junID, pattern = "\\*"))) { stop("Still junctions with * as strand!") }
   
   df_all_introns_tidy <- df_all_introns_tidy %>%
     inner_join(y = df_biotype_junID %>% dplyr::select(junID, protein_coding),
@@ -526,8 +588,13 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
                   u2_intron BOOL,
                   clinvar BOOL NOT NULL, 
                   protein_coding DOUBLE NOT NULL, 
+
+                  is_miRNA BOOL NOT NULL,
+                  is_ciRNA BOOL NOT NULL,
+                  is_utr BOOL NOT NULL,
+                  utr_type TEXT ,
                   
-                  misspliced TEXT NOT NULL)")
+                  misspliced BOOL NOT NULL)")
   
   
   con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database.sqlite)
@@ -551,7 +618,7 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
   if (all(df_all_introns_tidy_final$misspliced == T)) {
     stop("ERROR! all introns classified as misspliced!")
   }
-  
+
   DBI::dbAppendTable(conn = con, name = "intron", value = df_all_introns_tidy_final %>% dplyr::select(-c(tx_id_junction, gene_id)))
   logger::log_info("'Intron' master table populated! ", df_all_introns_tidy_final %>% distinct(ref_junID) %>% nrow(), " annotated introns stored!" )
   
@@ -785,7 +852,7 @@ SqlCreateMasterTableTranscript  <- function(database.sqlite,
 #' Creates the master 'Novel' table, which stores information about all novel 5' and 3' splicing events found
 #' across all samples studied
 #' @param database.sqlite 
-#' @param gtf.version 
+#' @param gtf.path 
 #' @param database.folder 
 #' @param results.folder 
 #' @param dependencies.folder 
@@ -796,7 +863,7 @@ SqlCreateMasterTableTranscript  <- function(database.sqlite,
 #'
 #' @examples
 SqlCreateMasterTableNovel <- function(database.sqlite,
-                                      gtf.version,
+                                      gtf.path,
                                       database.folder,
                                       results.folder,
                                       dependencies.folder,
@@ -808,20 +875,14 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
                                       discard.minor.introns = F) {
   
   logger::log_info("WORKING ON 'NOVEL' MASTER TABLE ... ")
-  
-  
-  
+    
   ## Load human ref transcriptome ----------------------------------------------
-  
-  hg38 <- rtracklayer::import(con = paste0(dependencies.folder, "/Homo_sapiens.GRCh38.", gtf.version, ".chr.gtf"))
-  
-  
-  
+  hg38 <- rtracklayer::import(con = gtf.path)
+      
   ## Connect to the database and get intron info -------------------------------
-  
   con <- dbConnect(RSQLite::SQLite(), database.sqlite)
   db_introns <- dbGetQuery(con, "SELECT ref_junID, ref_coordinates FROM 'intron'") %>% as_tibble()
-  
+
   
   ##########################################
   ## LOAD AND TIDY THE PAIR-WISE DISTANCES
@@ -846,28 +907,26 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
   ## Add MaxEntScan score to the split reads
   logger::log_info("Adding MaxEntScan scores to the NOVEL JUNCTONS...")
   wd <- getwd()
-  all_split_reads_tidy <- GenerateMaxEntScore(db.introns = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID) %>% distinct(junID, .keep_all = T),
-                                              max.ent.tool.path,
-                                              bedtools.path,
-                                              hs.fasta.path)
   
-  all_split_reads_tidy <- all_split_reads_tidy %>% 
+  df_all_novel_ME <- GenerateMaxEntScore(db.introns = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID) %>% distinct(junID, .keep_all = T),
+                                         max.ent.tool.path,
+                                         bedtools.path,
+                                         hs.fasta.path)
+  
+  df_all_novel_ME_gr <- df_all_novel_ME %>% 
     dplyr::select(-c(donorSeqStart, donorSeqStop, AcceptorSeqStart, AcceptorSeqStop)) %>%
-    dplyr::rename(novel_donor_sequence = donor_sequence, novel_acceptor_sequence = acceptor_sequence)
+    dplyr::rename(novel_donor_sequence = donor_sequence, novel_acceptor_sequence = acceptor_sequence) %>%
+    GRanges()
   setwd(wd)
+
+  mcols(df_all_novel_ME_gr)[["novel_junID"]] <- as.character(df_all_novel_ME_gr)
   
-  
-  df_all_novels_tidy <- all_split_reads_tidy %>%
-    mutate(novel_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
-  
-  if ((setdiff(df_all_novels_tidy$junID, df_all_novels_tidy$novel_junID) %>% length()) > 0) {
+  if ((setdiff(df_all_novel_ME_gr$junID, df_all_novel_ME_gr$novel_junID) %>% length()) > 0) {
     stop("ERROR! Novel junctions have been analysed under different sorting.")
   }
-  
-  rm(all_split_reads_tidy)
-  gc()
-  
-  df_all_novels_gr <- df_all_novels_tidy %>%
+
+  df_all_novels_gr <- df_all_novel_ME_gr %>% 
+    as_tibble() %>%
     dplyr::select(-c(any_of(c("junID","novel_ss5score","novel_ss3score")))) %>% 
     dplyr::rename(novel_mes5ss = ss5score, novel_mes3ss = ss3score) %>%
     dplyr::relocate(ref_junID, novel_junID) %>%
@@ -875,16 +934,18 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
     distinct(novel_junID, .keep_all = T) %>% 
     dplyr::rename(junID = "novel_junID") %>% 
     GRanges()
-  
+
+  rm(df_all_novel_ME)
+  rm(df_all_novel_ME_gr)
+  gc()
+
   ################################################
   ## NOVEL - ADD THE CONSERVATION AND CDTS INFO
   ################################################
-  
-  
+    
   logger::log_info("Adding CDTS and Conservation scores to the novel junctions ...")
-  
-  
-  seqlevelsStyle(df_all_novels_gr) <- "UCSC"
+    
+  #seqlevelsStyle(df_all_novels_gr) <- "UCSC"
   df_all_novels_tidy <- GenerateCdtsPhastconsScores(dependencies.folder = dependencies.folder,
                                                     phastcons.bw.path = phastcons.bw.path,
                                                     cdts.bw.path = cdts.bw.path, 
@@ -895,16 +956,16 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
     dplyr::rename("novel_junID" = "junID") %>% 
     mutate_if(is.numeric, ~replace_na(., 0))
   
-  df_all_novels_tidy %>% as_tibble()
-  
+  # df_all_novels_tidy %>% dplyr::count(novel_type)  
+    
   rm(df_all_novels_gr)
-  
+  gc()
+
   ######################################
   ## NOVEL - ADD CLINVAR DATA
   ######################################
   
   logger::log_info("Adding the ClinVar data...")
-  
   df_all_novels_tidy_gr <- AddClinvarData(db.introns = df_all_novels_tidy, dependencies.folder)
   
   
@@ -926,7 +987,7 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
   rm(df_all_novels_tidy_gr)
   
   df_all_novels_tidy_final 
-  
+
   ####################################
   ## CREATE NOVEL JUNCTION TABLE
   ####################################
@@ -1050,18 +1111,15 @@ SqlCreateMasterTableCombo <- function(database.sqlite,
   
   DBI::dbDisconnect(conn = con) 
   
-  
   if (is.null(recount3.project.IDs)) {
     recount3.project.IDs <- (df_metadata$SRA_project %>% unique())
   }
-  
-  
+    
   if (file.exists(file.path(database.folder, "all_raw_novel_combos.rds"))) {
     logger::log_info("Loading the pre-generated data...")
     df_all_novel_combos <- readRDS(file = file.path(database.folder, "all_raw_novel_combos.rds"))
     if (any(names(df_all_novel_combos) == "reads")) {
-      df_all_novel_combos <- df_all_novel_combos %>%
-        dplyr::select(-reads)
+      df_all_novel_combos <- df_all_novel_combos %>% dplyr::select(-reads)
     }
   } else {
     stop("ERROR loading file dependencies!")
@@ -1074,7 +1132,7 @@ SqlCreateMasterTableCombo <- function(database.sqlite,
   logger::log_info("Adding the MaxEntScan info ...")
   
   wd <- getwd()
-  if ( !file.exists(file.path(dependencies.folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
+  if ( !file.exists(file.path(dependencies.folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
     stop("ERROR! File dependency 'Homo_sapiens.GRCh38.dna.primary_assembly.fa' does not exist within the specified dependencies folder.")
   }
   
@@ -1083,7 +1141,6 @@ SqlCreateMasterTableCombo <- function(database.sqlite,
                                                           max.ent.tool.path,
                                                           bedtools.path,
                                                           hs.fasta.path) %>% as_tibble()
-  
   
   all_split_read_combos_RBPs_w_MES <- all_split_read_combos_RBPs_w_MES %>% 
     dplyr::select(-c(donorSeqStart, donorSeqStop, AcceptorSeqStart, AcceptorSeqStop)) %>%
@@ -1102,14 +1159,13 @@ SqlCreateMasterTableCombo <- function(database.sqlite,
   
   logger::log_info("Adding CDTS and Conservation scores...")
   
-  seqlevelsStyle(all_split_read_combos_RBPs_w_MES) <- "UCSC"
+  #seqlevelsStyle(all_split_read_combos_RBPs_w_MES) <- "UCSC"
   all_split_read_combos_RBPs_w_scores <- GenerateCdtsPhastconsScores(dependencies.folder = dependencies.folder,
                                                                      phastcons.bw.path = phastcons.bw.path,
                                                                      cdts.bw.path = cdts.bw.path,
                                                                      db.introns = all_split_read_combos_RBPs_w_MES,
                                                                      intron.size = 100,
-                                                                     phastcons.type = 17) %>% as_tibble() %>% 
-    mutate_if(is.numeric, ~replace_na(., 0))
+                                                                     phastcons.type = 17) %>% as_tibble() %>% mutate_if(is.numeric, ~replace_na(., 0))
   
   all_split_read_combos_RBPs_w_scores %>% as_tibble()
   
@@ -1118,8 +1174,6 @@ SqlCreateMasterTableCombo <- function(database.sqlite,
   #########################################
   
   df_biotype_junID <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds")) %>% as_tibble()
-  
-  if (any(str_detect(df_biotype_junID$junID, pattern = "\\*"))) { stop("There are junctions in the transcript biotype file with * as strand!") }
   
   all_split_read_combos_RBPs_w_scores <- all_split_read_combos_RBPs_w_scores %>% 
     inner_join(y = df_biotype_junID %>% dplyr::select(junID, protein_coding), by = c("junID"))
@@ -1181,11 +1235,11 @@ SqlCreateMasterTableCombo <- function(database.sqlite,
   all_split_read_combos_RBPs_w_scores_final <- all_split_read_combos_RBPs_w_scores %>%
     dplyr::rename(ref_coordinates = junID, ref_length = width) %>%
     tibble::rowid_to_column("ref_junID") %>%
-    dplyr::select(-gene_id)
+    dplyr::select(-any_of(c("gene_id", "ambiguous")))
   
   #summary(all_split_read_combos_RBPs_w_scores_final)
   
-  DBI::dbAppendTable(conn = con, name = "combo", value = all_split_read_combos_RBPs_w_scores_final %>% dplyr::select(-tx_id_junction))
+  DBI::dbAppendTable(conn = con, name = "combo", value = all_split_read_combos_RBPs_w_scores_final %>% dplyr::select(-any_of(c("tx_id_junction", "original_ID", "blockStarts"))))
   
   logger::log_info("'Combo' master table populated! ", 
                    all_split_read_combos_RBPs_w_scores_final %>% distinct(ref_junID) %>% nrow(), " novel combo junctions stored!" )
@@ -1293,3 +1347,139 @@ SqlCreateBridgeTablewTranscript <- function(database.sqlite,
   # return(db_bridge_data_final)
   
 }
+
+AddMicroRNAInfo <- function(df_introns_introverse_gr) {
+
+  # 1. Load microRNA info and coordinates
+  miRNA_db_gr <- rtracklayer::import(file.path("/home/sg2173/PROJECTS/srRNAseq/UKDRI_ROSMAP/data/miRNA_mirgenedb_hg38.gff"))
+  seqlevelsStyle(miRNA_db_gr) <- "Ensembl"
+
+  miRNA_db_gr
+  df_introns_introverse_gr
+
+  #2. FindOverlaps
+  miRNA_overlap_hits <- findOverlaps(query        = df_introns_introverse_gr,
+                                    subject       = miRNA_db_gr,
+                                    type          = c("any"),
+                                    ignore.strand = FALSE)
+
+  # miRNA_overlap_hits_tidy <- miRNA_overlap_hits %>% 
+  #   as_tibble %>%
+  #   group_by(queryHits) %>%
+  #   mutate(subjectHitsList = list(unique(miRNA_db_gr[subjectHits,]$ID))) %>%
+  #   ungroup() %>%
+  #   distinct(queryHits, .keep_all = TRUE) %>%
+  #   dplyr::select(-subjectHits) 
+  
+
+  #3. Assign circular RNA hits to the introns
+  # mcols(df_introns_introverse_gr)$miRNA <- NA
+  # df_introns_introverse_gr[miRNA_overlap_hits_tidy$queryHits,]$miRNA <- miRNA_overlap_hits_tidy$subjectHitsList
+  
+  mcols(df_introns_introverse_gr)[["is_miRNA"]] <- seq_along(df_introns_introverse_gr) %in% unique(queryHits(miRNA_overlap_hits))
+  df_introns_introverse_gr %>% return()
+
+}
+
+AddCircularRNAInfo <- function(df_introns_introverse_gr) {
+
+  # 1. Load circularRNA info and coordinates
+  cirRNA_db <- read.table(file.path("/home/sg2173/PROJECTS/srRNAseq/UKDRI_ROSMAP/data/circRNA_circAtlas_hg38.txt"), header=T)
+  cirRNA_db_gr <- cirRNA_db %>% as_tibble %>% 
+      dplyr::rename(seqnames = Chro, start = Start, end = End, strand = Strand) %>% GRanges
+  seqlevelsStyle(cirRNA_db_gr) <- "Ensembl"
+  cirRNA_db_gr
+  
+  
+
+  #2. FindOverlaps
+  ciRNA_overlap_hits <- findOverlaps(query         = df_introns_introverse_gr,
+                                     subject       = cirRNA_db_gr,
+                                     type          = c("any"),
+                                     ignore.strand = FALSE)
+
+  # cirRNA_overlap_hits_tidy <- ciRNA_overlap_hits %>% 
+  #   as_tibble %>%
+  #   group_by(queryHits) %>%
+  #   mutate(subjectHitsList = list(unique(cirRNA_db_gr[subjectHits,]$circAltas_ID))) %>%
+  #   ungroup() %>%
+  #   distinct(queryHits, .keep_all = TRUE) %>%
+  #   dplyr::select(-subjectHits) 
+
+  # cirRNA_overlap_hits_tidy
+
+  #3. Get overlaps
+  # mcols(df_introns_introverse_gr)$ciRNA <- NA
+  # df_introns_introverse_gr[cirRNA_overlap_hits_tidy$queryHits,]$ciRNA <- cirRNA_overlap_hits_tidy$subjectHitsList
+
+  mcols(df_introns_introverse_gr)[["is_ciRNA"]] <- seq_along(df_introns_introverse_gr) %in% unique(queryHits(ciRNA_overlap_hits))
+
+  # df_introns_introverse_gr %>% as_tibble() %>% filter(!is.na(is_ciRNA))
+  df_introns_introverse_gr %>% return()
+
+}
+
+
+AddUTRInfo <- function(df_introns_introverse_gr) {
+
+    # 1. Load UTR information
+    utr_introns <- if (!file.exists("~/PROJECTS/srRNAseq/UKDRI_ROSMAP/data/UTR_introns_hg38_v114.rds")) {
+        ExtractUTRintronsFromReference()
+    } else {
+        readRDS(file.path("~/PROJECTS/srRNAseq/UKDRI_ROSMAP/data/UTR_introns_hg38_v114.rds"))
+    }
+    utr_introns_gr <- utr_introns %>% GRanges()
+    seqlevelsStyle(utr_introns_gr) <- "Ensembl"
+    utr_introns_gr
+
+    # --------------------------------------------------------------------------
+    # Find full UTR overlap hits - these are annotated introns
+    # --------------------------------------------------------------------------
+
+    # 2. Find 'full' Overlaps
+    UTR_full_overlap_hits <- findOverlaps(query         = df_introns_introverse_gr,
+                                          subject       = utr_introns_gr,
+                                          type          = c("equal"),
+                                          ignore.strand = FALSE)
+    queryHits(UTR_full_overlap_hits) %>% unique %>% length
+    utr_introns_gr[subjectHits(UTR_full_overlap_hits),]
+
+
+    # 3. Add 'full' Overlaps UTR information into the dataframe
+    mcols(df_introns_introverse_gr)[["is_utr"]] <- seq_along(df_introns_introverse_gr) %in% unique(queryHits(UTR_full_overlap_hits))
+
+    mcols(df_introns_introverse_gr)[["utr_type"]] <- NA
+    mcols(df_introns_introverse_gr[queryHits(UTR_full_overlap_hits),])[["utr_type"]] <- mcols(utr_introns_gr[subjectHits(UTR_full_overlap_hits),])[["utr_type"]] %>% as.character()
+
+    df_introns_introverse_gr %>% as_tibble %>% filter(is_utr == TRUE, seqnames == 14, start == 73136584, end == 73147794)
+    df_introns_introverse_gr %>% return()
+
+}
+
+ExtractUTRintronsFromReference <- function() {
+
+    gtf_hg38 <- rtracklayer::import(file.path("~/rds/hpc-work/reference/ensembl/Homo_sapiens.GRCh38.114.chr.gtf"))
+    gtf_hg38_tb <- gtf_hg38 %>% as_tibble()
+
+    gtf_hg38_tb_utrs <- gtf_hg38_tb %>% filter(type %in% c("five_prime_utr", "three_prime_utr"))
+
+    gtf_hg38_utr_introns_gr <- gtf_hg38_tb_utrs %>% 
+        mutate(utr_type = type) %>% 
+        ggtranscript::to_intron(., group_var = "transcript_id") %>% 
+        dplyr::select(seqnames, start, end, strand, width, type, utr_type, gene_id, gene_name, gene_biotype, transcript_id, transcript_name, transcript_biotype) %>% 
+        GRanges()
+
+    gtf_hg38_utr_introns_gr$junID <- as.character(gtf_hg38_utr_introns_gr)
+
+    # Evaluate using PSEN1 as example
+    # gtf_hg38_tb %>% filter(type %in% c("five_prime_utr", "three_prime_utr"), gene_name == "PSEN1", transcript_id == "ENST00000324501") %>% as.data.frame()
+
+    gtf_hg38_utr_introns_gr %>%
+        as_tibble %>% 
+        mutate(start = start + 1 ,end = end - 1) %>% ## Convert to intron coordinates
+        GRanges %>%
+        saveRDS(., file.path("~/PROJECTS/srRNAseq/UKDRI_ROSMAP/data/UTR_introns_hg38_v114.rds"))
+
+    gtf_hg38_tb_utr_introns %>% return()
+}
+

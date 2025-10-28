@@ -21,7 +21,7 @@ JunctionPairing <- function(recount3.project.IDs,
     doParallel::registerDoParallel(num.cores)
     foreach(i = seq(length(recount3.project.IDs)), .combine = "rbind") %dopar%{
       
-      # i <- 3
+      # i <- 1
       project_id <- recount3.project.IDs[i]
       
       folder_root <- file.path(results.folder, project_id)
@@ -35,9 +35,9 @@ JunctionPairing <- function(recount3.project.IDs,
         
         clusters_ID <- readRDS(file = paste0(folder_base_data, "/", project_id, "_clusters_used.rds"))
         
-        for (cluster_id in clusters_ID) {
+        for (cluster_id in clusters_ID[-1]) {
           
-          # cluster_id <- clusters_ID[2]
+          # cluster_id <- clusters_ID[-1][1]
           
           logger::log_info(paste0(Sys.time(), " - loading '", cluster_id, "' source data ..."))
           
@@ -62,7 +62,7 @@ JunctionPairing <- function(recount3.project.IDs,
               stop("ERROR! different number of samples used!");
             }
             
-            if (!identical(all_split_reads_details$junID, split_read_counts$junID)) {
+            if (!identical(sort(all_split_reads_details$junID), sort(split_read_counts$junID))) {
               stop("ERROR! The number of junctions considered is not correct.");
             }
             
