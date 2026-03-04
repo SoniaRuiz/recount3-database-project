@@ -12,67 +12,91 @@
 GenerateMaxEntScore <- function(db.introns,
                                 max.ent.tool.path,
                                 bedtools.path,
-                                hs.fasta.path){
+                                hs.fasta.path,
+                                tmp.dir){
 
   logger::log_info("MaxEntScan score - extracting the sequences ...")  
 
-  db.introns_gr <- db.introns %>% GRanges()
-  seqlevelsStyle(db.introns_gr) <- "Ensembl"
- 
-  db.introns <- db.introns_gr %>% dplyr::as_tibble()
-  db.introns$seqnames <- db.introns$seqnames %>% as.character()
+  if (str_detect(db.introns$seqnames[1], "chr")) { 
+    db.introns <- db.introns %>% mutate(seqnames = gsub("^chr", "", chr)) 
+  } # Ensembl style manually 
   
   if (any(db.introns$seqnames == "M")) { logger::log_info("Error! There's data for chr-MT!") } 
   
+  #========================================================================
+  # EXTRACT THE GENOMIC SEQUENCES FOR EACH SPLICE SITE
+  #========================================================================
+
   ## 0. Prepare the object ---------------------------------------------------
   
-  ## get the ranges for the donor and acceptor sequences needed for the MaxEntScan
-  db.introns <- db.introns %>%  mutate(donorSeqStart = 
-                                       ifelse(strand == "-",
-                                              end - 6, start - 4),
-                                     donorSeqStop =
-                                       ifelse(strand == "-",
-                                              end + 3, start + 5),
-                                     AcceptorSeqStart =
-                                       ifelse(strand == "-",
-                                              start - 4, end - 20),
-                                     AcceptorSeqStop =
-                                       ifelse(strand == "-",
-                                              start + 19, end + 3)) 
+  setDT(db.introns)
+  
+  db.introns[strand == "+", `:=`(
+    donorSeqStart = start - 4, donorSeqStop = start + 5,
+    AcceptorSeqStart = end - 20, AcceptorSeqStop = end + 3
+  )]
+  db.introns[strand == "-", `:=`(
+    donorSeqStart = end - 6, donorSeqStop = end + 3,
+    AcceptorSeqStart = start - 4, AcceptorSeqStop = start + 19
+  )]
+
+  ## Remove rows with unresolved coordinates (e.g. strand == "*") before writing BED
+  n_before <- nrow(db.introns)
+  db.introns <- db.introns[!is.na(donorSeqStart) & !is.na(donorSeqStop) &
+                             !is.na(AcceptorSeqStart) & !is.na(AcceptorSeqStop)]
+  
+  n_removed <- n_before - nrow(db.introns)
+  if (n_removed > 0) {
+    logger::log_info(paste0(n_removed, " row(s) removed due to missing/unresolved strand or coordinates."))
+  }
   
   db.introns[1,]
   
-  to.BED <- data.frame(seqnames = db.introns$seqnames,
-                       starts   = as.integer(db.introns$donorSeqStart),
-                       ends     = as.integer(db.introns$donorSeqStop),
-                       names    = as.character(db.introns$junID),
-                       scores   = c(rep(".", nrow(db.introns))),
-                       strands  = db.introns$strand)
-  to.BED[1,]
-  
-  ## 1. Obtain the genomic sequence for splice sites ------------------------------------------------
-  
-  ## Get the donor genomic sequence
-  
-  tmp.file <- tempfile()
-  
-  ## get the maxentscan for the 5' splice site
-  write.table(to.BED, file = tmp.file, quote = F, sep = "\t", row.names = F, col.names = F)
-  tmp.file_seq <- tempfile()
-  # print(paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ",
-  #              tmp.file, " -tab -fo ", tmp.file_seq))
-  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ", tmp.file, " -tab -fo ", tmp.file_seq))
-  donor_sequences_input <- read.delim(tmp.file_seq, header = F)
-  head(donor_sequences_input)
-  head(db.introns)
-  
+  # Fix coordinates at source - cast to integer in data.table BEFORE building to.BED
+  db.introns[, donorSeqStart := as.integer(donorSeqStart)]
+  db.introns[, donorSeqStop  := as.integer(donorSeqStop)]
+  db.introns[, AcceptorSeqStart := as.integer(AcceptorSeqStart)]
+  db.introns[, AcceptorSeqStop  := as.integer(AcceptorSeqStop)]
 
-  stopifnot(identical(gsub("::.*$", "", as.character(donor_sequences_input$V1)), db.introns$junID %>% as.character()))
+  options(scipen = 999)
+
+  ## 1. Get the genomic sequences for the DONOR splice sites ---------------------------------------------------
+
+  to.BED <- data.frame(
+    seqnames = db.introns$seqnames,
+    starts   = as.integer(db.introns$donorSeqStart),
+    ends     = as.integer(db.introns$donorSeqStop),
+    names    = as.character(db.introns$junID),
+    scores   = rep(".", nrow(db.introns)),
+    strands  = db.introns$strand
+  )
+
+  tmp.file <- tempfile()
+  tmp.file_seq <- tempfile()
+
+  # Use write.table - slow to write but only called once
+  write.table(to.BED, file = tmp.file, quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+
+  system.time({system(command = paste0(
+    bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path,
+    " -bed ", tmp.file, " -tab -fo ", tmp.file_seq
+  ))})
+
+  donor_sequences_input <- data.table::fread(tmp.file_seq, header = FALSE) %>% 
+    mutate(junID = gsub("::.*$", "", as.character(V1)))
+
+  # Sanity check
+  stopifnot(identical(as.character(donor_sequences_input$junID), as.character(db.introns$junID)))
+
   db.introns <- cbind(db.introns, donor_sequence = as.character(donor_sequences_input$V2))
   db.introns %>% head()
   
+  ## Remove temporary files
+  rm(to.BED, tmp.file, tmp.file_seq)
   
-  ## Get the acceptor genomic sequence  
+
+  ## 2. Get the genomic sequences for the ACCEPTOR splice sites ---------------------------------------------------
+
   to.BED <- data.frame(seqnames  =  db.introns$seqnames,
                        starts    =  as.integer(db.introns$AcceptorSeqStart),
                        ends      =  as.integer(db.introns$AcceptorSeqStop),
@@ -81,18 +105,21 @@ GenerateMaxEntScore <- function(db.introns,
                        strands   =  db.introns$strand)
   
   
-  tmp.file <- tempfile()
-  
-  write.table(to.BED, file = tmp.file, quote = F, sep = "\t", row.names = F, col.names = F)
+  tmp.file <- tempfile() 
   tmp.file_seq <- tempfile()
-  system(command = paste0(bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path, " -bed ", tmp.file, " -tab -fo ", tmp.file_seq))
-  acceptor_sequences_input <- read.delim(tmp.file_seq, header = F)
+  write.table(to.BED, file = tmp.file, quote = F, sep = "\t", row.names = F, col.names = F)
+  system.time({system(command = paste0(
+    bedtools.path, "/bin/bedtools getfasta -name -s -fi ", hs.fasta.path,
+    " -bed ", tmp.file, " -tab -fo ", tmp.file_seq
+  ))})
+  acceptor_sequences_input <- data.table::fread(tmp.file_seq, header = FALSE) %>% mutate(junID = gsub("::.*$", "", as.character(V1)))
   
   head(acceptor_sequences_input)
   head(donor_sequences_input)
   
   ## Replaces everything (.*) from the '::' until the end of the string '$'
-  stopifnot(identical(gsub("::.*$", "", as.character(acceptor_sequences_input$V1)),db.introns$junID %>% as.character()))
+  # Sanity check
+  stopifnot(identical(as.character(acceptor_sequences_input$junID), as.character(db.introns$junID)))
   db.introns <- cbind(db.introns, acceptor_sequence = as.character(acceptor_sequences_input$V2))
   db.introns %>% head()
   
@@ -101,6 +128,9 @@ GenerateMaxEntScore <- function(db.introns,
   rm(to.BED, tmp.file, tmp.file_seq)
   
 
+  #========================================================================
+  # GENERATE THE MAXENTSCORE
+  #========================================================================
   
   ## 2. Generate the MaxEntScore --------------------------------------------------------------------
   logger::log_info("Generating MaxEntScan score for the donor sequences...")
@@ -117,9 +147,8 @@ GenerateMaxEntScore <- function(db.introns,
   ss5score <- read.delim(pipe(paste0("perl ", max.ent.tool.path, "score5.pl ", tmp.file)), header = F)
   identical(as.character(ss5score$V1), gsub("N","A",as.character(db.introns$donor_sequence)))
   db.introns <- cbind(db.introns, ss5score = ss5score$V2)
-  
-  
-  
+
+
   logger::log_info("Generating MaxEntScan score for the acceptor sequences...")
   ## get the maxentscan for the 3' splice site
   length(grep("N",as.character(db.introns$acceptor_sequence)))

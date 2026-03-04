@@ -34,32 +34,35 @@ GetDistances <- function(project.id,
       stop(logger::log_info("Error: sample '", sample, "' not found within the split-reads file!"))
     }
     
-    logger::log_info(project.id, " - ", cluster, " sample '", num_sample, "'")
-    
-    split_read_counts_sample <- split.read.counts %>%
-      as_tibble() %>%
-      dplyr::select(junID, all_of(as.character(sample))) %>%
-      drop_na() %>%
-      filter(.data[[sample]] > 0)
-    
-    split_reads_details_sample <- all.split.reads.details %>%
-      inner_join(split_read_counts_sample, by = "junID") %>%
-      dplyr::rename(counts = all_of(as.character(sample))) %>%
-      as_tibble()
-    
-    RunQC(split.reads.details.sample = split_reads_details_sample, 
-          split.read.counts.sample = split_read_counts_sample, 
-          sample)
-    
-    distances <- bind_rows(
-      ComputeDistances(junction.class = "novel_donor", split.reads.details.sample = split_reads_details_sample, sample),
-      ComputeDistances(junction.class = "novel_acceptor", split.reads.details.sample = split_reads_details_sample, sample)
-    ) %>% dplyr::select(-sample)
-    
-    saveRDS(distances, file_path)
-    
-    num_sample <<- num_sample + 1
-    if (num_sample %% 50 == 0) gc()
+    if (!file.exists(file_path) || replace) {
+      
+      logger::log_info(project.id, " - ", cluster, " sample '", num_sample, "'")
+      
+      split_read_counts_sample <- split.read.counts %>%
+        as_tibble() %>%
+        dplyr::select(junID, all_of(as.character(sample))) %>%
+        drop_na() %>%
+        filter(.data[[sample]] > 0)
+      
+      split_reads_details_sample <- all.split.reads.details %>%
+        inner_join(split_read_counts_sample, by = "junID") %>%
+        dplyr::rename(counts = all_of(as.character(sample))) %>%
+        as_tibble()
+      
+      RunQC(split.reads.details.sample = split_reads_details_sample, 
+            split.read.counts.sample = split_read_counts_sample, 
+            sample)
+      
+      distances <- bind_rows(
+        ComputeDistances(junction.class = "novel_donor", split.reads.details.sample = split_reads_details_sample, sample),
+        ComputeDistances(junction.class = "novel_acceptor", split.reads.details.sample = split_reads_details_sample, sample)
+      ) %>% dplyr::select(-sample)
+      
+      saveRDS(distances, file_path)
+      
+      num_sample <<- num_sample + 1
+      if (num_sample %% 50 == 0) gc()
+    }
   }
   
   for (sample in samples) {

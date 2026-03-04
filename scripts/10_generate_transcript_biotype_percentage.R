@@ -11,10 +11,10 @@
 #' @examples
 GenerateTranscriptBiotypePercentage <- function(gtf.path,
                                                 dependencies.folder,
-                                                database.dir,
+                                                database.folder,
                                                 replace) {
   
-  if (replace) {
+  if (replace || !file.exists(file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds"))) {
     ## LOAD REFERENCE TRANSCRIPTOME AND GET TRANSCRIPT BIOTYPE -------------------
     
     logger::log_info(paste0(Sys.time(), " - loading the human reference transcriptome ... "))
@@ -36,7 +36,7 @@ GenerateTranscriptBiotypePercentage <- function(gtf.path,
     logger::log_info("loading the 'all_split_reads_qc_level1.rds' split reads ... ")
     
     ## LOAD the all split reads from all recount3 GTEx projects
-    all_split_reads_details_all_tissues <- readRDS(file = file.path(database.dir, "all_split_reads_qc_level1.rds") )
+    all_split_reads_details_all_tissues <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1.rds") )
     
     all_split_reads_details_all_tissues %>% head()
     all_split_reads_details_all_tissues %>% nrow()
@@ -89,7 +89,7 @@ GenerateTranscriptBiotypePercentage <- function(gtf.path,
     
     ## Save results    
     saveRDS(object = transcripts_hg_percentage_tidy, 
-            file = file.path(database.dir, "all_split_reads_qc_level1_PC_biotype.rds"))
+            file = file.path(database.folder, "all_split_reads_qc_level1_PC_biotype.rds"))
     
     
     logger::log_info("Results file 'all_split_reads_qc_level1_PC_biotype.rds' saved!")

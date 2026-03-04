@@ -24,7 +24,13 @@ SqlDatabaseGeneration <- function(database.sqlite,
                                   hs.fasta.path,
                                   phastcons.bw.path,
                                   cdts.bw.path, 
-                                  remove.all = NULL,
+                                  mane.gtf.path,
+                                  utr.introns.path,
+                                  circRNA.path,
+                                  miRNA.path,
+                                  replace = F,
+                                  remove.all = T,
+                                  tmp.dir,
                                   discard.minor.introns = F) {
   
   
@@ -35,14 +41,14 @@ SqlDatabaseGeneration <- function(database.sqlite,
   
   #logger::log_info("Database tables:",paste0(tables %>% print()))
 
-  if (!is.null(remove.all) && remove.all) {
+  if (replace) {
     SqlRemoveTables(database.sqlite, all = remove.all, con)
     tables <- DBI::dbListTables(conn = con)
     tables %>% print()
   }
   
   
-  if (!all(c('metadata', 'intron', 'novel', 'gene', 'transcript', 'combo') %in% tables)) {
+  if (!all(c('metadata', 'intron', 'novel', 'gene', 'transcript', 'other') %in% tables)) {
     
     logger::log_info("Creating master tables ...")
     SqlCreateMasterTables(database.sqlite = database.sqlite,
@@ -56,6 +62,11 @@ SqlDatabaseGeneration <- function(database.sqlite,
                           hs.fasta.path,
                           phastcons.bw.path,
                           cdts.bw.path, 
+                          mane.gtf.path,
+                          utr.introns.path,
+                          circRNA.path,
+                          miRNA.path,
+                          tmp.dir = tmp.dir,
                           discard.minor.introns = discard.minor.introns)
     
     

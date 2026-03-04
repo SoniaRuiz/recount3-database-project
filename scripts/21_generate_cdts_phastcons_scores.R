@@ -25,6 +25,21 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
     db.introns <- readRDS(file = paste0(folder.name, "/", cluster, "_db.introns.rds")) %>%
       distinct(ref_junID, .keep_all = T)
   }
+
+ 
+  # Open the connection to the BigWigFile once 
+  if (!file.exists(phastcons.bw.path)) {
+    stop("Conservation file '", phastcons.bw.path, "' does not exist!") %>% logger::log_info()
+  } else {
+    BigWigFilePhastCons <- BigWigFile(phastcons.bw.path)
+  }
+  if (!file.exists(cdts.bw.path)) {
+    stop("Constraint file '", cdts.bw.path, "' does not exist!") %>% logger::log_info()
+  } else {
+    BigWigFileCDTS <- BigWigFile(cdts.bw.path)
+  }
+  
+  
   
   ###########################################
   ## PHASTCONS SCORES
@@ -36,54 +51,34 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
     
     for (p_type in phastcons.type) {
       
-      # p_type <- phastcons.type[1]
-      
-      # logger::log_info("PhastCons", p_type, "...")
-      
-      if (!file.exists(phastcons.bw.path)) {
-        stop("PhastCons file '", phastcons.bw.path, "' does not exist!") %>% logger::log_info()
-      }
-        
-      # i_size <- 35
-      
-      ## Calculate donor (5'ss) scores -----------------------------------------
-      
+      colname_5ss <- paste0("mean_phastCons", p_type, "way5ss_", i_size)
+      colname_3ss <- paste0("mean_phastCons", p_type, "way3ss_", i_size)
+
+      ## Calculate donor (5'ss) scores -----------------------------------------      
       logger::log_info(i_size, "bp - Calculating PhastCons" , p_type, " scores overlapping donor sequences...")
       gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
                                    ranges = IRanges(start = db.introns %>% start(), end = db.introns %>% start() + i_size),
                                    strand = db.introns %>% strand())
-      seqlevelsStyle(gr) <- "UCSC"
+
       mcols(gr)[["junID"]] <- (db.introns %>% as.character())
-      phastCons_5ss <- GetConservationScoreForRegionsBW(bw_path = phastcons.bw.path, gr, summaryFun = "mean") %>% as_tibble() %>%
-        dplyr::rename_with(.fn = ~paste0(., "5ss_", i_size), .cols = paste0("mean_phastCons", p_type, "way")) %>% GRanges
-      #seqlevelsStyle(phastCons_5ss) <- "Ensembl"
-      #mcols(phastCons_5ss)[["junID"]] <- (phastCons_5ss %>% as.character())  
+      phastCons_5ss <- GetScoresFromBWRegion(bw_path = BigWigFilePhastCons, gr, summaryFun = "mean", col_name = colname_5ss) 
+     
       
-      
-      ## Calculate acceptor (3'ss) scores --------------------------------------
-      
+      ## Calculate acceptor (3'ss) scores --------------------------------------      
       logger::log_info(i_size, "bp - Calculating PhastCons" , p_type, " scores overlapping acceptor sequences...")
       gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
                                    ranges = IRanges(start = db.introns %>% end() - i_size, db.introns %>% end()),
                                    strand = db.introns %>% strand)
-      seqlevelsStyle(gr) <- "UCSC"
+
       mcols(gr)[["junID"]] <- (db.introns %>% as.character())  
-      phastCons_3ss <- GetConservationScoreForRegionsBW(bw_path = phastcons.bw.path, gr = gr, summaryFun = "mean") %>% as_tibble()  %>%
-        dplyr::rename_with(.fn = ~paste0(., "3ss_", i_size), .cols = paste0("mean_phastCons", p_type, "way")) %>% GRanges
-      #seqlevelsStyle(phastCons_3ss) <- "Ensembl"
-      #mcols(phastCons_3ss)[["junID"]] <- (phastCons_3ss %>% as.character())  
+      phastCons_3ss <- GetScoresFromBWRegion(bw_path = BigWigFilePhastCons, gr = gr, summaryFun = "mean", col_name = colname_3ss) 
+
       
-      
-      ## Add columns to master data
-      db.introns <- db.introns %>%
-        as_tibble() %>%
-        left_join(phastCons_5ss %>% as_tibble() %>% dplyr::select(junID, paste0("mean_phastCons", p_type, "way5ss_", i_size)),
-                  by = "junID") %>%
-        left_join(phastCons_3ss %>% as_tibble() %>% dplyr::select(junID, paste0("mean_phastCons", p_type, "way3ss_", i_size)),
-                   by = "junID") %>%
-        GRanges()
-      
-      
+      ## Add phastcons columns to gr object   
+      mcols(db.introns)[[colname_5ss]] <- mcols(phastCons_5ss)[[colname_5ss]]
+      mcols(db.introns)[[colname_3ss]] <- mcols(phastCons_3ss)[[colname_3ss]]
+
+   
     }
     
     ###########################################
@@ -98,48 +93,32 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
     # we obtain the 10bp regions overlapping with the proximal intronic region and get the mean
     # CDTS score value
     
-
-    
-    if (!file.exists(cdts.bw.path)) {
-      stop("Constraint file '", cdts.bw.path, "' does not exist!") %>% logger::log_info()
-    }
+    ## Add columns to master data
+    colname_5ss <- paste0("mean_CDTS5ss_", i_size)
+    colname_3ss <- paste0("mean_CDTS3ss_", i_size)
 
 
     ## Calculate donor scores
     logger::log_info(i_size, "bp - CDTS calculating donor sequences...")
     gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
-                                 ranges = IRanges(start = db.introns %>% start(),
-                                                  end = db.introns %>% start() + i_size),
+                                 ranges = IRanges(start = db.introns %>% start(), end = db.introns %>% start() + i_size),
                                  strand = db.introns %>% strand)
-    seqlevelsStyle(gr) <- "UCSC"
     mcols(gr)[["junID"]] <- (db.introns %>% as.character())
-    CDTS_5ss <- GetConstraintScoreForRegionsBW(bw_path = cdts.bw.path, gr = gr, summaryFun = "mean") %>% as_tibble() %>%
-      dplyr::rename_with(.fn = ~paste0(., "5ss_", i_size), .cols = mean_CDTS)
-
-
+    CDTS_5ss <- GetScoresFromBWRegion(bw_path = BigWigFileCDTS, gr = gr, summaryFun = "mean", col_name = colname_5ss)
 
 
     ## Calculate acceptor scores
     logger::log_info(i_size, "bp - CDTS calculating acceptor sequences....")
     gr <- GenomicRanges::GRanges(seqnames = db.introns %>% seqnames(),
-                                 ranges = IRanges(start = db.introns %>% end() - i_size,
-                                                  end = db.introns %>% end()))
-    seqlevelsStyle(gr) <- "UCSC"
+                                 ranges = IRanges(start = db.introns %>% end() - i_size, end = db.introns %>% end()),
+                                 strand = db.introns %>% strand)
     mcols(gr)[["junID"]] <- (db.introns %>% as.character())
-    CDTS_3ss <- GetConstraintScoreForRegionsBW(bw_path = cdts.bw.path, gr = gr, summaryFun = "mean") %>% as_tibble() %>%
-      dplyr::rename_with(.fn = ~paste0(., "3ss_", i_size), .cols = paste0("mean_CDTS"))
-
+    CDTS_3ss <- GetScoresFromBWRegion(bw_path = BigWigFileCDTS, gr = gr, summaryFun = "mean", col_name = colname_3ss) 
+   
     
-    
-    ## Add columns to master data
-    db.introns <- db.introns %>%
-      as_tibble() %>%
-      left_join(CDTS_5ss %>% dplyr::select(junID, paste0("mean_CDTS5ss_", i_size)),
-                 by = "junID") %>%
-      left_join(CDTS_3ss %>% dplyr::select(junID, paste0("mean_CDTS3ss_", i_size)),
-                 by = "junID") %>%
-      GRanges()
-    
+    ## Add CDTS columns to gr object
+    mcols(db.introns)[[colname_5ss]] <- mcols(CDTS_5ss)[[colname_5ss]]
+    mcols(db.introns)[[colname_3ss]] <- mcols(CDTS_3ss)[[colname_3ss]]
   }
   
   
@@ -167,43 +146,19 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
 
 # Functions -------------------------------------------------------------------------------------------
 
-GetConservationScoreForRegionsBW <- function(bw_path, gr, summaryFun  = "mean"){
-  
-  BigWigFile <- BigWigFile(bw_path)
-  # seqlevels(BigWigFile)
-  # seqlevels(gr)
-  # file.exists(bw_path)
-  # test_region <- GRanges("chr1", IRanges(100000, 101000))
-  # try(import(bw_path, which = test_region))
-  phast_cons_score <- bw_path %>% str_replace(".*/", "") %>% str_extract("phastCons.*way")
-  
-  gr_w_scores <- summary(object = BigWigFile, gr, size = 1L, type = summaryFun) %>% unlist()
+GetScoresFromBWRegion <- function(bw_path, gr, summaryFun  = "mean", col_name){
+    
+  gr_w_scores <- summary(object = bw_path, gr, size = 1L, type = summaryFun) %>% unlist()
   
   stopifnot((width(gr) == width(gr_w_scores)))
+
+  mcols(gr)[[col_name]] <- gr_w_scores$score
   
-  elementMetadata(gr)[[str_c(summaryFun, "_", phast_cons_score)]] <- gr_w_scores$score
-  
-  gr_w_scores <- gr
-  
-  return(gr_w_scores)
+  return(gr)
   
 }
 
-GetConstraintScoreForRegionsBW <- function(bw_path, gr, summaryFun  = "mean"){
-  
-  BigWigFile <- BigWigFile(bw_path)
-  
-  gr_w_scores <- summary(BigWigFile, gr, size = 1L, type = summaryFun) %>% unlist()
-  
-  stopifnot((width(gr)  == width(gr_w_scores)))
-  
-  elementMetadata(gr)[[str_c(summaryFun, "_CDTS")]] <- gr_w_scores$score
-  
-  gr_w_scores <- gr
-  
-  return(gr_w_scores)
-  
-}
+
 
 
 # Functions -------------------------------------------------------------------------------------------

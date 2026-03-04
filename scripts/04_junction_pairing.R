@@ -14,7 +14,7 @@ JunctionPairing <- function(recount3.project.IDs,
                             num.cores,
                             replace) {
   
-  if (replace) {
+  
     
     logger::log_info("Starting 'JunctionPairing' script...")
     
@@ -35,7 +35,7 @@ JunctionPairing <- function(recount3.project.IDs,
         
         clusters_ID <- readRDS(file = paste0(folder_base_data, "/", project_id, "_clusters_used.rds"))
         
-        for (cluster_id in clusters_ID[-1]) {
+        for (cluster_id in clusters_ID) {
           
           # cluster_id <- clusters_ID[-1][1]
           
@@ -106,5 +106,5 @@ JunctionPairing <- function(recount3.project.IDs,
         }
       }
     }
-  }
+  
 }

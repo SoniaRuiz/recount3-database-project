@@ -20,15 +20,19 @@ PrepareRecount3Data <- function(recount3.project.IDs,
                                 supporting.reads,
                                 num.cores,
                                 replace,
-                                subsampling = F) {
+                                subsampling = F,
+                                filter_by_rin = F,
+                                tmp.dir) {
   
-  if (replace) {
+  
+  if (replace || 
+      !file.exists(file.path(results.folder, recount3.project.IDs[1], "base_data", paste0(recount3.project.IDs[1], "_clusters_used.rds")))) {
     
-    if (!file.exists(paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds"))) {
+    if (!file.exists(file.path(levelqc1.folder, "all_split_reads_qc_level1.rds"))) {
       stop("Error! The file with the split reads passing the LEVEL 1 filtering criteria does not exist!")
     } else {
       logger::log_info("loading the file with the split reads passing the LEVEL 1 filtering criteria...")
-      all_split_reads_qc_level1 <- readRDS(file = paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds"))
+      all_split_reads_qc_level1 <- readRDS(file = file.path(levelqc1.folder, "all_split_reads_qc_level1.rds"))
     }
     
     logger::log_info(all_split_reads_qc_level1 %>% nrow(), " initial number of split reads...")
@@ -45,7 +49,7 @@ PrepareRecount3Data <- function(recount3.project.IDs,
       # project_id <- "LUNG"
       # project_id <- "OV"
       
-      local_folder_results <- paste0(results.folder, "/", project_id, "/base_data/")
+      local_folder_results <- file.path(results.folder, project_id, "base_data")
       dir.create(file.path(local_folder_results), recursive = TRUE, showWarnings = F)
       
       logger::log_info(project_id, " - downloading junction data from recount3")
@@ -56,12 +60,12 @@ PrepareRecount3Data <- function(recount3.project.IDs,
         project_home = data.source,
         organism = "human",
         annotation = "gencode_v29",
-        type = "jxn"
+        type = "jxn",
+        bfc = recount3::recount3_cache(cache_dir = tmp.dir)
       )
       
       metadata.info <- colData(rse_jxn)
-      saveRDS(object = metadata.info, 
-              file = paste0(local_folder_results, "/", project_id, "_samples_raw_metadata.rds"))
+      saveRDS(object = metadata.info, file = file.path(local_folder_results, paste0(project_id, "_samples_raw_metadata.rds")))
       
       
       #################################
@@ -110,14 +114,13 @@ PrepareRecount3Data <- function(recount3.project.IDs,
           metadata_tidy_filter <- metadata_tidy
         }
         
-        if (!all(is.na(metadata_tidy$rin))) {
+        if (filter_by_rin && !all(is.na(metadata_tidy$rin))) {
           stopifnot(
             "There are samples with RIN lower than 6!" = all(metadata_tidy_filter$rin >= 6)
           )
         }
         
-        saveRDS(object = metadata_tidy_filter, 
-                file = paste0(local_folder_results, "/", project_id, "_samples_metadata.rds"))
+        saveRDS(object = metadata_tidy_filter, file = file.path(local_folder_results, paste0(project_id, "_samples_metadata.rds")))
         
         # metadata_tidy_filter$all_mapped_reads %>% min
         # metadata_tidy_filter %>% as_tibble()
@@ -169,10 +172,12 @@ PrepareRecount3Data <- function(recount3.project.IDs,
         
         clusters_used <- NULL
         
-        for ( cluster_id in clusters_ID ) {
+        for (cluster_id in clusters_ID) {
           
           # cluster_id <- clusters_ID[1]
           # cluster_id <- clusters_ID[2]
+
+          
           
           ################
           ## Get clusters
@@ -188,12 +193,11 @@ PrepareRecount3Data <- function(recount3.project.IDs,
           logger::log_info(cluster_id, " samples: ", cluster_samples %>% length())
           
           ## When working with 'gtex' data, only tissues with at least 70 samples were considered
-          if ( ((data.source == "data_sources/gtex" && cluster_samples %>% length() >= 70) ||
-                (data.source != "data_sources/gtex" && cluster_samples %>% length() >= 1)) && 
+          if ( #((data.source == "data_sources/gtex" && cluster_samples %>% length() >= 70) ||
+               # (data.source != "data_sources/gtex" && cluster_samples %>% length() >= 1)) && 
                ((colnames(all_counts) %in% cluster_samples) %>% length() > 0) ) {
             
-            saveRDS(object = cluster_samples, 
-                    file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_samples_used.rds"))
+            saveRDS(object = cluster_samples, file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_samples_used.rds"))
             
             clusters_used <- c(clusters_used, cluster_id)
             
@@ -234,15 +238,21 @@ PrepareRecount3Data <- function(recount3.project.IDs,
             all_split_reads <- local_counts %>%
               dplyr::select(junID) %>%
               data.table::as.data.table() %>%
-              inner_join(y = all_split_reads_qc_level1,
-                         by = "junID")
+              inner_join(y = all_split_reads_qc_level1, by = "junID")
             
-            ## Separate from novel combos
-            all_split_reads_combos <- all_split_reads %>%
-              filter(type == "novel_combo")
+            ## Separate the novel categories
+            all_split_reads_combos <- all_split_reads %>% filter(type == "novel_combo")
+            all_split_reads_ambig <- all_split_reads %>% filter(type == "ambig_gene")
+            all_split_reads_unannotated <- all_split_reads %>% filter(type == "unannotated")
+
+            all_split_reads <- all_split_reads %>% filter(type %in% c("annotated", "novel_acceptor", "novel_donor"))
+            logger::log_info(all_split_reads %>% nrow(), " unique ANNOTATED, NOVEL_DONOR and NOVEL_ACCEPTOR split reads.")
             
-            all_split_reads <- all_split_reads %>%
-              filter(!(junID %in% all_split_reads_combos$junID))
+            all_split_reads <- all_split_reads %>% filter(!(junID %in% all_split_reads_combos$junID), 
+                                                          !(junID %in% all_split_reads_ambig$junID),
+                                                          !(junID %in% all_split_reads_unannotated$junID))
+            logger::log_info(all_split_reads %>% nrow(), " unique ANNOTATED, NOVEL_DONOR and NOVEL_ACCEPTOR split reads.")
+
             
             #######################
             ## QC and save results
@@ -250,21 +260,43 @@ PrepareRecount3Data <- function(recount3.project.IDs,
             
             if (any(all_split_reads$width < 25) |
                 any(str_detect(string = all_split_reads$chr, pattern = "random")) |
-                any(str_detect(string = str_to_lower(all_split_reads$chr), pattern = "u")) |
-                any(!(all_split_reads$type %in% c("annotated", "novel_acceptor", "novel_donor")))) {
-              stop("ERROR! The split reads do not meet the minimum LEVEL1 filtering criteria.")
+                any(str_detect(string = str_to_lower(all_split_reads$chr), pattern = "u"))) {
+              stop("ERROR! The split reads hasn't been properly splitted into categories")
+            }
+
+            if (length(intersect(all_split_reads$junID, all_split_reads_combos$junID)) != 0) {
+              stop("ERROR! Split reads classified as 5ss or 3ss have been also classified as novel combo.")
+            }
+            if (length(intersect(all_split_reads$junID, all_split_reads_ambig$junID)) != 0) {
+              stop("ERROR! Split reads classified as 5ss or 3ss have been also classified as ambiguous.")
+            }
+            if (length(intersect(all_split_reads$junID, all_split_reads_unannotated$junID)) != 0) {
+              stop("ERROR! Split reads classified as 5ss or 3ss have been also classified as unannotated")
+            }
+            if (length(intersect(all_split_reads_combos$junID, all_split_reads_unannotated$junID)) != 0) {
+              stop("ERROR! Split reads classified as novel combo have been also classified as unannotated")
+            }
+            if (length(intersect(all_split_reads_combos$junID, all_split_reads_ambig$junID)) != 0) {
+              stop("ERROR! Split reads classified as novel combo have been also classified as ambiguous")
+            }
+            if (length(intersect(all_split_reads_unannotated$junID, all_split_reads_ambig$junID)) != 0) {
+              stop("ERROR! Split reads classified as unannotated have been also classified as ambiguous")
             }
             
             ## Check how much memory this object uses
             #logger::log_info(object.size(all_split_reads %>% data.table::as.data.table()), units = "GB")
             
-            logger::log_info(all_split_reads %>% nrow(), " unique split reads.")
+           
             
-            ## Save split reads objects
+            ## Save split reads 
             saveRDS(object = all_split_reads %>% as_tibble(),
                     file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds"))
             saveRDS(object = all_split_reads_combos %>% as_tibble(),
                     file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_all_split_reads_combos.rds"))
+            saveRDS(object = all_split_reads_ambig %>% as_tibble(),
+                    file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_all_split_reads_ambig.rds"))
+            saveRDS(object = all_split_reads_unannotated %>% as_tibble(),
+                    file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_all_split_reads_unannotated.rds"))
             
             ## Save split read counts
             saveRDS(object = local_counts %>% filter(junID %in% all_split_reads$junID),
@@ -273,7 +305,16 @@ PrepareRecount3Data <- function(recount3.project.IDs,
             saveRDS(object = local_counts %>% filter(junID %in% all_split_reads_combos$junID),
                     file = paste0(local_folder_results, "/", project_id, "_", 
                                   cluster_id, "_split_read_counts_combos.rds"))
+            saveRDS(object = local_counts %>% filter(junID %in% all_split_reads_ambig$junID),
+                    file = paste0(local_folder_results, "/", project_id, "_", 
+                                  cluster_id, "_split_read_counts_ambig.rds"))
+            saveRDS(object = local_counts %>% filter(junID %in% all_split_reads_unannotated$junID),
+                    file = paste0(local_folder_results, "/", project_id, "_", 
+                                  cluster_id, "_split_read_counts_unannotated.rds"))
+            
             logger::log_info(local_counts %>% filter(junID %in% all_split_reads_combos$junID) %>% nrow(), " unique split read counts from combos.")
+            logger::log_info(local_counts %>% filter(junID %in% all_split_reads_ambig$junID) %>% nrow(), " unique split read counts from ambiguous jxn")
+            logger::log_info(local_counts %>% filter(junID %in% all_split_reads_unannotated$junID) %>% nrow(), " unique split read counts from unannotated")
             gc()
             
             ## Free up some local memory

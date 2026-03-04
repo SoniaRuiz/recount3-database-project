@@ -40,6 +40,7 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
     
       
       ## Set local result paths
+      # i <- 1
       project_id <- recount3.project.IDs[i]
       results_folder_local <- file.path(results.folder, project_id)
       results_folder_local_tpm <- file.path(results_folder_local, "tpm")
@@ -64,7 +65,8 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
               project_home = data.source,
               organism = "human",
               annotation = "gencode_v29",
-              type = "gene"
+              type = "gene",
+              bfc = recount3::recount3_cache(cache_dir = tpm.folder)
             )
             
           ),
@@ -79,7 +81,7 @@ GenerateRecount3TPM <- function(recount3.project.IDs,
           SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
           
           logger::log_info("Computing TPM for genes found in ", project_id, "...")
-          recount_tpm <- recount::getTPM(rse)
+          recount_tpm <- recount::getTPM(rse, length_var = NULL)
           
           ## Save tpm values for all genes across all samples
           saveRDS(object = recount_tpm, file = paste0(tpm.folder, "/", project_id, "_tpm.rds"))

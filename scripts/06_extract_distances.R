@@ -15,7 +15,7 @@ ExtractDistances <- function(cluster,
                              replace) {
   
   
-  if (replace) {
+  if (replace || !file.exists(file.path(folder.name, paste0(cluster, "_raw_distances_tidy.rds")))) {
     
     ## Obtain the distances across all samples
     df_all <- map_df(samples, function(sample) { 

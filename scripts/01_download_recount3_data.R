@@ -25,9 +25,10 @@ DownloadRecount3Data <- function (recount3.project.IDs,
                                   data.source,
                                   database.folder,
                                   results.folder,
+                                  tmp.dir,
                                   replace) {
   
-  if (replace) {
+  if (replace || !file.exists(file.path(database.folder, "all_split_reads_qc_level1.rds"))) {
 
     ## Load all split reads across all sample clusters and split them by cluster
 
@@ -49,6 +50,8 @@ DownloadRecount3Data <- function (recount3.project.IDs,
         logger::log_info("Getting data from '", project_id, "' recount3 project...")
         
         folder_root <- file.path(results.folder, project_id, "base_data/")
+        
+        
         dir.create(file.path(folder_root), recursive = TRUE, showWarnings = T)
         
         #############################################################################
@@ -73,7 +76,7 @@ DownloadRecount3Data <- function (recount3.project.IDs,
         
         feature_info <- utils::read.delim(recount3::file_retrieve(
           url = jxn_files[grep("\\.RR\\.gz$", jxn_files)],
-          bfc = recount3::recount3_cache(),
+          bfc = recount3::recount3_cache(cache_dir = tmp.dir),
           verbose = getOption("recount3_verbose", TRUE)
         ))
         
@@ -89,6 +92,7 @@ DownloadRecount3Data <- function (recount3.project.IDs,
                                       annotated = feature_info$annotated,
                                       left_motif = feature_info$left_motif,
                                       right_motif = feature_info$right_motif) %>% as_tibble()
+
         
         logger::log_info(project_id, " --> ", all_split_reads %>% nrow(), " split reads.")
         
@@ -167,6 +171,7 @@ DownloadRecount3Data <- function (recount3.project.IDs,
                      " split reads NOT overlapping blacklist regions!")
     gc()
     
+    
     #######################################################
     ## 4. Anotate using the R package 'dasper'
     #######################################################
@@ -182,24 +187,32 @@ DownloadRecount3Data <- function (recount3.project.IDs,
     rm(all_split_reads_raw_tidy_gr)
     rm(edb)
     
-    ################################################################################
-    ## 5. Discard all junctions that are not annotated, novel donor or novel acceptor
-    ################################################################################
+    # ################################################################################
+    # ## 5. Discard all junctions that are not annotated, novel donor or novel acceptor
+    # ################################################################################
     
-    ## Remove uncategorized junctions
-    all_split_reads_details_w_symbol <- RemoveUncategorizedJunctions(input.SR.details = all_split_reads_details_w_symbol)
-    logger::log_info("Uncategorised split reads removed!")
+    # ## Remove uncategorized junctions
+    # all_split_reads_details_w_symbol <- RemoveUncategorizedJunctions(input.SR.details = all_split_reads_details_w_symbol)
+    # logger::log_info("Uncategorised split reads removed!")
     
-    logger::log_info( all_split_reads_details_w_symbol %>% length(), " annotated, novel donor, novel acceptor and novel combo junctions.")
+    # logger::log_info( all_split_reads_details_w_symbol %>% length(), " annotated, novel donor, novel acceptor and novel combo junctions.")
     
-    
+    print(all_split_reads_details_w_symbol %>% head())
+
+    all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>% 
+      dplyr::select(any_of(c("junID", "seqnames", "start", "end", "width", "strand", "gene_name_junction",
+                            "gene_id_junction", "in_ref", "type", "tx_id_junction",
+                            "annotated", "left_motif", "right_motif", "n_projects"))) %>% 
+      dplyr::rename(gene_name = gene_name_junction, gene_id = gene_id_junction)
+
     ############################################################################
     ## 6. Discard all ambiguous split reads (i.e. assigned to multiple genes)
     ############################################################################
     
     logger::log_info("Discarding ambiguous split reads ...")
     ## Remove ambiguous junctions assigned to multiple genes
-    all_split_reads_details_w_symbol <- RemoveAmbiguousJunctions(input.SR.details = all_split_reads_details_w_symbol, database.folder)
+    all_split_reads_details_w_symbol <- RemoveAmbiguousJunctions(input.SR.details = all_split_reads_details_w_symbol, database.folder) 
+    all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>% dplyr::filter(ambiguous == F) %>% dplyr::select(-ambiguous)
     logger::log_info("Ambiguous split reads removed!")
     
     
@@ -207,10 +220,10 @@ DownloadRecount3Data <- function (recount3.project.IDs,
     ## 7. SAVE RESULTS
     #####################
     
-    all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>% dplyr::filter(ambiguous == F) %>% dplyr::select(-ambiguous)
     
+    print(all_split_reads_details_w_symbol %>% dplyr::count(type)) 
     logger::log_info( all_split_reads_details_w_symbol %>% nrow(), " split reads passing the 1st QC filtering criteria.")
-    saveRDS(object = all_split_reads_details_w_symbol %>% dplyr::rename(gene_id = gene_id_junction),
+    saveRDS(object = all_split_reads_details_w_symbol,
             file = file.path(database.folder, "all_split_reads_qc_level1.rds"))
     
     

@@ -14,7 +14,7 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
                               replace,
                               all.clusters = NULL) {
   
-  if (replace) {
+  if (replace || !file.exists(file.path(database.folder, "all_jxn_correct_pairings.rds"))) {
     
     ############################################
     ## LOAD SPLIT READS QC LEVEL 1
@@ -39,7 +39,8 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
     
     all_split_reads_details_qc_level2 %>% nrow()
     all_split_reads_details_qc_level2 %>% head()
-
+    all_split_reads_details_qc_level2 %>% dplyr::count(type)
+    
     ## This should be zero
     if ( setdiff(all_split_reads_details_qc_level2$junID, all_split_reads_details_qc_level1$junID) %>% length() > 0) {
       stop("ERROR! Some of the annotated split reads that passed the 2nd QC level are not found within the split reads from the 1st QC level.");
@@ -101,7 +102,7 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
     }
     
     
-    # These are the number of split reads from the samples excluded
+    # These are the number of split reads from the samples excluded and those classified as AMBIGUOUS; COMBO AND UNANNOTATED
     setdiff(all_split_reads_details_qc_level1$junID, 
             all_split_reads_details_qc_level2$junID) %>% unique %>% length()
     
@@ -206,14 +207,14 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
     
     # ###########################################
     # 
-    # df_not_paired_tidy %>% filter(type == "annotated") %>% distinct(junID, .keep_all=T)
-    # df_not_paired_tidy %>% filter(type == "novel_donor") %>% distinct(junID, .keep_all=T)
+    # df_not_paired_tidy %>% dplyr::filter(type == "annotated") %>% distinct(junID, .keep_all=T)
+    # df_not_paired_tidy %>% dplyr::filter(type == "novel_donor") %>% distinct(junID, .keep_all=T)
     # 
     # intersect(df_all_jxn_pairings$novel_junID,
-    #           df_not_paired_tidy %>% filter(type != "annotated")%>% pull( junID))
+    #           df_not_paired_tidy %>% dplyr::filter(type != "annotated")%>% pull( junID))
     # 
     # intersect(df_all_jxn_pairings$ref_junID,
-    #           df_not_paired_tidy %>% filter(type == "annotated")%>% pull( junID))
+    #           df_not_paired_tidy %>% dplyr::filter(type == "annotated")%>% pull( junID))
     # 
     # ###########################################
     
@@ -263,19 +264,19 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
       dplyr::group_by(novel_junID) %>%
       mutate(ref_chosen = ifelse(ref_counts == max(ref_counts), TRUE, FALSE)) %>% # Assign the reference intron with the highest number of reads
       ungroup() %>% 
-      filter(ref_chosen == TRUE)
+      dplyr::filter(ref_chosen == TRUE)
 
     df_reassigned_ambig_novel_by_reads_n_distance <- df_reassigned_ambig_novel_by_reads %>%
       dplyr::group_by(novel_junID) %>%
       mutate(ref_chosen = ifelse(abs(distance) == min(abs(distance)), TRUE, FALSE)) %>% # Assign the reference intron with the closest distance
       ungroup() %>% 
-      filter(ref_chosen == TRUE)
+      dplyr::filter(ref_chosen == TRUE)
 
     df_reassigned_ambig_novel_final <- df_reassigned_ambig_novel_by_reads_n_distance %>%
       dplyr::group_by(novel_junID) %>%
       mutate(ref_chosen = ifelse(distance == min(distance), TRUE, FALSE)) %>% # Assign the reference intron with the closest distance
       ungroup() %>% 
-      filter(ref_chosen == TRUE)
+      dplyr::filter(ref_chosen == TRUE)
 
     
     ## 3. Re-assign ambiguous junctions
@@ -353,11 +354,11 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
         
     
     ## 3. NOT PAIRED JUNCTIONS
-    if ( any(str_detect(string = df_not_paired_tidy %>% filter(type == "annotated") %>% pull(junID), pattern = "\\*")) ) {
+    if ( any(str_detect(string = df_not_paired_tidy %>% dplyr::filter(type == "annotated") %>% pull(junID), pattern = "\\*")) ) {
       stop("ERROR! Some NOT PAIRED INTRONS still have a * in their IDs!")
     }
     df_not_paired_tidy %>% 
-      filter(type == "annotated") %>% 
+      dplyr::filter(type == "annotated") %>% 
       dplyr::select(ref_junID = junID, seqnames, start, end, width, strand, gene_id, tx_id_junction) %>%
       saveRDS(., file = file.path(database.folder, "all_jxn_not_paired.rds"))
   }

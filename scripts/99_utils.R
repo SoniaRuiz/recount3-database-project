@@ -130,7 +130,7 @@ RemoveAmbiguousJunctions <- function(input.SR.details, database.folder) {
     distinct(junID, .keep_all = T) %>% 
     rowwise() %>%
     mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, T, F)) %>%
-    return()
+    ungroup()
   
   ambiguous_introns <- input.SR.details %>% dplyr::filter(ambiguous == TRUE)
   

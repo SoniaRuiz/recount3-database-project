@@ -41,7 +41,7 @@ AddClinvarData <- function(db.introns,
   }
   clinvar_gr <- clinvar_gr %>% GenomicRanges::GRanges()
   
-  seqlevelsStyle(clinvar_gr) <- "Ensembl"
+  seqlevelsStyle(clinvar_gr) <- "UCSC"
   elementMetadata(clinvar_gr)[, "ID"] <- (clinvar_gr) %>% as.character()
   
   df_all_introns_gr <- db.introns %>% mutate(clinvar = F) %>% GRanges() 
