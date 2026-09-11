@@ -144,7 +144,7 @@ GenerateMaxEntScore <- function(db.introns,
   
   write.table(gsub("N","A",as.character(db.introns$donor_sequence)),file=tmp.file,row.names=F,col.names=F,quote=F)
   setwd(max.ent.tool.path)
-  ss5score <- read.delim(pipe(paste0("perl ", max.ent.tool.path, "score5.pl ", tmp.file)), header = F)
+  ss5score <- read.delim(pipe(paste0("perl ", max.ent.tool.path, "/score5.pl ", tmp.file)), header = F)
   identical(as.character(ss5score$V1), gsub("N","A",as.character(db.introns$donor_sequence)))
   db.introns <- cbind(db.introns, ss5score = ss5score$V2)
 

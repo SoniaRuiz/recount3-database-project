@@ -22,7 +22,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
                                         phastcons.type = 17) {
   
   if (is.null(db.introns) && !is.null(cluster)) {
-    db.introns <- readRDS(file = paste0(folder.name, "/", cluster, "_db.introns.rds")) %>%
+    db.introns <- readRDS(file = file.path(folder.name, paste0(cluster, "_db.introns.rds"))) %>%
       distinct(ref_junID, .keep_all = T)
   }
 
@@ -128,7 +128,7 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
   
   if (!is.null(cluster)) {
 
-    saveRDS(object = db.introns, file = paste0(folder.name, "/", cluster, "_db.introns.rds"))
+    saveRDS(object = db.introns, file = file.path(folder.name, paste0(cluster, "_db.introns.rds")))
     logger::log_info("CDTS and PhastCons scores added! Database updated!")
 
     rm(gr)

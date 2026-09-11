@@ -29,51 +29,52 @@ SqlCreateMasterTables <- function(database.sqlite,
                                   discard.minor.introns = F) {
   
   
-  ## A) CREATE MASTER 'METADATA' TABLE -----------------------------------------
-  
-  SqlCreateMasterTableMetadata(database.sqlite,
-                               recount3.project.IDs,
-                               results.folder)
-  
-  
-  
-
-  
-
-  ## B) CREATE MASTER 'INTRON' TABLE -------------------------------------------
-
-  SqlCreateMasterTableIntron(database.sqlite,
-                             gtf.path,
-                             database.folder,
-                             results.folder,
-                             dependencies.folder,
-                             max.ent.tool.path,
-                             bedtools.path,
-                             hs.fasta.path,
-                             phastcons.bw.path,
-                             cdts.bw.path, 
-                             mane.gtf.path,
-                             utr.introns.path,
-                             circRNA.path,
-                             miRNA.path,
-                             discard.minor.introns)
-  
-
-  
-  ## C) CREATE MASTER 'NOVEL' TABLE
-  ## It contains novel 5' and 3' splicing events -------------------------------
-
-  SqlCreateMasterTableNovel(database.sqlite,
-                            gtf.path,
-                            database.folder,
-                            results.folder,
-                            dependencies.folder,
-                            max.ent.tool.path,
-                            bedtools.path,
-                            hs.fasta.path,
-                            phastcons.bw.path,
-                            cdts.bw.path, 
-                            discard.minor.introns)
+  # ## A) CREATE MASTER 'METADATA' TABLE -----------------------------------------
+  # TODO if table exists and has data inside skip
+  # 
+  # SqlCreateMasterTableMetadata(database.sqlite,
+  #                              recount3.project.IDs,
+  #                              results.folder)
+  # 
+  # 
+  # 
+  # 
+  # 
+  # 
+  # ## B) CREATE MASTER 'INTRON' TABLE -------------------------------------------
+  # 
+  # SqlCreateMasterTableIntron(database.sqlite,
+  #                            gtf.path,
+  #                            database.folder,
+  #                            results.folder,
+  #                            dependencies.folder,
+  #                            max.ent.tool.path,
+  #                            bedtools.path,
+  #                            hs.fasta.path,
+  #                            phastcons.bw.path,
+  #                            cdts.bw.path, 
+  #                            mane.gtf.path,
+  #                            utr.introns.path,
+  #                            circRNA.path,
+  #                            miRNA.path,
+  #                            discard.minor.introns)
+  # 
+  # 
+  # 
+  # ## C) CREATE MASTER 'NOVEL' TABLE
+  # ## It contains novel 5' and 3' splicing events -------------------------------
+  # 
+  # SqlCreateMasterTableNovel(database.sqlite,
+  #                           gtf.path,
+  #                           database.folder,
+  #                           results.folder,
+  #                           dependencies.folder,
+  #                           max.ent.tool.path,
+  #                           bedtools.path,
+  #                           hs.fasta.path,
+  #                           phastcons.bw.path,
+  #                           cdts.bw.path, 
+  #                           discard.minor.introns)
   
   
   
