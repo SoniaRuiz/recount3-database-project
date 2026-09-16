@@ -74,6 +74,7 @@ SqlCreateMasterTables <- function(database.sqlite,
   #                           hs.fasta.path,
   #                           phastcons.bw.path,
   #                           cdts.bw.path, 
+  #                           miRNA.path,
   #                           discard.minor.introns)
   
   
@@ -90,6 +91,7 @@ SqlCreateMasterTables <- function(database.sqlite,
                             hs.fasta.path,
                             phastcons.bw.path = phastcons.bw.path,
                             cdts.bw.path = cdts.bw.path,
+                            miRNA.path = miRNA.path,
                             tmp.dir = tmp.dir)
   
   
@@ -930,6 +932,7 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
                                       hs.fasta.path,
                                       phastcons.bw.path,
                                       cdts.bw.path, 
+                                      miRNA.path,
                                       discard.minor.introns = F) {
 
   con <- dbConnect(RSQLite::SQLite(), database.sqlite)
@@ -1057,7 +1060,16 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
     rm(df_all_novels_tidy)
     rm(df_all_novels_tidy_gr)
     
-    df_all_novels_tidy_final 
+    
+    ######################################
+    ## ADD miRNA INFO 
+    ######################################
+    logger::log_info("Adding microRNA info...")
+    df_all_novels_tidy_final_gr <- AddMicroRNAInfo(df_all_novels_tidy_final %>% GRanges(),
+                                                miRNA.path)
+    message(df_all_novels_tidy_final_gr %>% as_tibble %>% filter(is_miRNA == TRUE) %>% nrow,
+            " novel junctions overlapping microRNA sequences")
+    
 
     ####################################
     ## CREATE NOVEL JUNCTION TABLE
@@ -1091,6 +1103,8 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
                     novel_length INTEGER NOT NULL, 
                     novel_type TEXT NOT NULL, 
                     distance INTEGER NOT NULL,
+                    
+                    is_miRNA BOOL NOT NULL,
 
                     PRIMARY KEY (ref_junID, novel_junID),
                     FOREIGN KEY (ref_junID) REFERENCES 'intron'(ref_junID))")
@@ -1100,7 +1114,8 @@ SqlCreateMasterTableNovel <- function(database.sqlite,
     
     logger::log_info("'Novel' master table created!")
     
-    df_all_novels_tidy_final <- df_all_novels_tidy_final %>% 
+    df_all_novels_tidy_final <- df_all_novels_tidy_final_gr %>% 
+      as_tibble() |>
       dplyr::rename(novel_coordinates = novel_junID ) %>%
       distinct(novel_coordinates, .keep_all = T) %>%
       tibble::rowid_to_column("novel_junID") %>%
@@ -1165,6 +1180,7 @@ SqlCreateMasterTableOther <- function(database.sqlite,
                                       hs.fasta.path,
                                       phastcons.bw.path,
                                       cdts.bw.path,
+                                      miRNA.path,
                                       recount3.project.IDs = NULL,
                                       tmp.dir) {
   
@@ -1285,6 +1301,17 @@ SqlCreateMasterTableOther <- function(database.sqlite,
     # all_split_read_novel_w_scores_w_pc |> dplyr::count(type)
     logger::log_info(all_split_read_novel_w_scores_w_pc$junID %>% unique %>% length(), " 'novel combos' and 'unannotated' junctions to be stored!")
     
+    
+    ######################################
+    ## ADD miRNA INFO 
+    ######################################
+    logger::log_info("Adding microRNA info...")
+    all_split_read_novel_w_scores_w_pc_gr <- AddMicroRNAInfo(all_split_read_novel_w_scores_w_pc %>% GRanges(),
+                                                   miRNA.path)
+    message(all_split_read_novel_w_scores_w_pc_gr %>% as_tibble %>% filter(is_miRNA == TRUE) %>% nrow,
+            " 'other' junctions overlapping microRNA sequences")
+    
+    
     #########################################################
     ## CREATE AND POPULATE MASTER 'NOVEL COMBO' TABLE
     #########################################################
@@ -1319,6 +1346,8 @@ SqlCreateMasterTableOther <- function(database.sqlite,
                     right_motif TEXT,
                     ref_donor_sequence TEXT NOT NULL,
                     ref_acceptor_sequence TEXT NOT NULL,
+                    
+                    is_miRNA BOOL NOT NULL,
 
                     gene_id TEXT,
 
@@ -1339,7 +1368,8 @@ SqlCreateMasterTableOther <- function(database.sqlite,
 
     ## 2. POPULATE THE NOVEL OTHER TABLE -----------------------------------------
     
-    all_split_read_novel_w_scores_w_pc_final <- all_split_read_novel_w_scores_w_pc %>%
+    all_split_read_novel_w_scores_w_pc_final <- all_split_read_novel_w_scores_w_pc_gr %>%
+      as_tibble() |>
       dplyr::rename(ref_coordinates = junID, ref_length = width) %>%
       tibble::rowid_to_column("ref_junID") %>%
       dplyr::select(-any_of(c("ambiguous","tx_id_junction", "original_ID", "blockStarts", "gene_name"))) %>%
@@ -1355,6 +1385,7 @@ SqlCreateMasterTableOther <- function(database.sqlite,
     DBI::dbDisconnect(conn = con)
 
     rm(all_split_read_novel_w_scores_w_pc_final)
+    rm(all_split_read_novel_w_scores_w_pc_gr)
     rm(all_split_read_novel_w_scores_w_pc)
     rm(all_split_read_novel_w_scores)
     rm(all_split_read_novel_w_MES_gr)
@@ -1461,9 +1492,10 @@ AddMicroRNAInfo <- function(df_introns_introverse_gr,
   df_introns_introverse_gr
 
   #2. FindOverlaps
+  # "within" as miRNAs are typically 20-22bp long, so it is expected to be nested within the intron
   miRNA_overlap_hits <- findOverlaps(query        = df_introns_introverse_gr,
                                     subject       = miRNA_db_gr,
-                                    type          = c("any"),
+                                    type          = "within",
                                     ignore.strand = FALSE)
 
 
@@ -1489,9 +1521,10 @@ AddCircularRNAInfo <- function(df_introns_introverse_gr,
   
 
   #2. FindOverlaps
+  # equal as it marks the back-splice donor-acceptor pair,
   ciRNA_overlap_hits <- findOverlaps(query         = df_introns_introverse_gr,
                                      subject       = cirRNA_db_gr,
-                                     type          = c("any"),
+                                     type          = c("equal"),
                                      ignore.strand = FALSE)
 
   #3. Get overlaps
