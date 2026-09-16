@@ -230,7 +230,7 @@ DownloadKnockdownEfficiencyTPM <- function(metadata,
     metadata_filtered <- metadata %>%
       dplyr::filter(target_gene %in% target_RBPs, !is.na(gene_quantification_id)) %>%
       dplyr::select(target_gene, cell_line, experiment_type, sample_id, gene_quantification_id) %>%
-      dplyr::mutate(path = paste0(main_path, target_gene, "/", experiment_type, "/")) %>%
+      dplyr::mutate(path = file.path(main_path, target_gene, experiment_type)) %>%
       dplyr::left_join(y = ensembl_target_RBPs, 
                        by = c("target_gene" = "hgnc_symbol"), multiple = "all") %>%
       dplyr::relocate(ensembl_gene_id, .before = cell_line)

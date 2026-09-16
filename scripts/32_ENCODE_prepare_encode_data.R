@@ -135,13 +135,11 @@ JunctionReading <- function(metadata,
         cluster_metadata <- metadata %>% filter(target_gene == RBP, experiment_type == cluster) %>% distinct(sample_id, .keep_all = T)
         
         ## Multiprocessing loop
-        cl <- parallel::makeCluster(num.cores)
-        doParallel::registerDoParallel(cl)
-        logger::log_info("Reading all extracted BAM files (num.cores = ", num.cores, ").")
+        #cl <- parallel::makeCluster(num.cores)
+        #doParallel::registerDoParallel(cl)
+        #logger::log_info("Reading all extracted BAM files (num.cores = ", num.cores, ").")
         
-        all_junc <- foreach(i = 1:nrow(cluster_metadata %>% distinct(sample_id)), 
-                            .export = c("RBP", "RBP.source.path"),
-                            .combine = 'rbind', .packages = c("tidyverse")) %dopar% {
+        all_junc <- map_df(1:nrow(cluster_metadata %>% distinct(sample_id)), function(i){
                               
                               ## i = 1
                               ## Definition of the variables
@@ -194,9 +192,9 @@ JunctionReading <- function(metadata,
                                   return(tibble())
                                 }
                               )
-                            }
+                            })
         ## Stop the parallel cluster
-        parallel::stopCluster(cl)
+        #parallel::stopCluster(cl)
         
         # print(all_junc %>% head)
         
@@ -261,6 +259,7 @@ CreateLevelQ1File <- function(database.path,
     
     ## 2. Convert to a GRanges before blacklist and annotating
     all_junc_combined <- all_junc_combined %>% GenomicRanges::GRanges()
+    seqlevelsStyle(all_junc_combined) <- "UCSC"
     all_junc_combined <- RemoveEncodeBlacklistRegions(GRdata = all_junc_combined, blacklist.path = blacklist.path)
     logger::log_info("Split reads overlapping blacklist regions removed!")
     
@@ -268,9 +267,11 @@ CreateLevelQ1File <- function(database.path,
     
     ## 3. Annotate Dasper
     edb <- LoadEdb(gtf.path)
+    seqlevelsStyle(all_junc_combined) <- "Ensembl"
     all_junc_combined_annotated <- AnnotateDasper(GRdata = all_junc_combined, edb) %>% tibble::as_tibble()
     logger::log_info("Split reads annotation finished!")
     
+    all_junc_combined_annotated |> dplyr::count(type)
     
     
     
@@ -278,12 +279,12 @@ CreateLevelQ1File <- function(database.path,
     all_junc_combined_annotated_tidy <- RemoveUncategorizedJunctions(input.SR.details = all_junc_combined_annotated)
     logger::log_info("Uncategorised split reads removed!")
     
-    
+    all_junc_combined_annotated_tidy
     
     
     ## 5. Remove junctions with ambiguous genes
     dir.create(path = file.path(database.path, gtf.version), recursive = T)
-    all_junc_combined_annotated_tidy <- RemoveAmbiguousJunctions(all_junc_combined_annotated_tidy, 
+    all_junc_combined_annotated_tidy <- RemoveAmbiguousJunctions(input.SR.details = all_junc_combined_annotated_tidy |> dplyr::rename(gene_id = gene_id_junction), 
                                                                  database.folder = file.path(database.path, gtf.version))
     logger::log_info("Ambiguous split reads removed!")
     
@@ -293,7 +294,7 @@ CreateLevelQ1File <- function(database.path,
     ## 6. Save the junctions
     all_junc_combined_annotated_tidy %>% 
       dplyr::select("junID", "seqnames", "start", "end", "width", "strand",
-                    gene_id = "gene_id_junction", "in_ref", "type", "tx_id_junction") %>%
+                    gene_id, "in_ref", "type", "tx_id_junction") %>%
       dplyr::bind_rows() %>% 
       dplyr::distinct() %>% 
       mutate(junID = paste0("chr", seqnames,":", start, "-", end, ":", strand)) %>%

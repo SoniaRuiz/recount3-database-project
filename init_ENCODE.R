@@ -1,26 +1,39 @@
-library(tidyverse)
-library(SummarizedExperiment)
-library(data.table)
-library(GenomicRanges)
-library(DBI)
-library(here)
-library(logger)
-library(foreach)
-library(doParallel)
-library(Biostrings)
-library(protr)
-library(optparse)
-library(doSNOW)
-library(reticulate)
-library(org.Hs.eg.db)
+
+# source("/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/recount3-database-project/init_ENCODE.R")
+
+
+.libPaths( c( "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library",
+              "/rds/user/sg2173/hpc-work/moved_from_home_dir/R/x86_64-pc-linux-gnu-library/4.3",
+              .libPaths() ) )
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(SummarizedExperiment)
+  library(data.table)
+  library(GenomicRanges)
+  library(DBI, lib.loc = "/rds/user/sg2173/hpc-work/moved_from_home_dir/R/x86_64-pc-linux-gnu-library/4.3")
+  
+  library(RSQLite, lib.loc = "/rds/user/sg2173/hpc-work/moved_from_home_dir/R/x86_64-pc-linux-gnu-library/4.3")
+  library(here)
+  library(logger)
+  library(foreach)
+  library(doParallel)
+  library(Biostrings)
+  library(protr)
+  library(optparse)
+  library(doSNOW)
+  library(reticulate)
+  library(org.Hs.eg.db)
+})
 
 ## .libPaths("~/R/x86_64-pc-linux-gnu-library/4.3")
+
 #####################################
 ## SET MAIN VARIABLES
 #####################################
 
 ## This is the Ensembl gtf transcriptome version 
-gtf_version <- c(111)
+gtf_version <- c(116)
 
 ## This is the name of the project producing the database
 min_supporting_reads <- 1
@@ -28,20 +41,22 @@ analysis_type = "shRNA" ## This can also be CRISPR
 
 main_project <- paste0("ENCODE_SR_", min_supporting_reads, "read_", analysis_type)
 
+base_folder <- "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/recount3-database-project/"
+
 args <-
   list(
     replace = F,
     num_cores = 1,
-    base_folder = here::here(),
-    dependencies_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/dependencies"),
+    base_folder = "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/recount3-database-project/",
+    dependencies_folder = file.path(base_folder, "dependencies"),
     tools_folder = file.path("/home/sg2173/tools"),
     
-    database_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/database", main_project, gtf_version),
-    database_root_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/database", main_project),
+    database_folder = file.path(base_folder, "database", main_project, gtf_version),
+    database_root_folder = file.path(base_folder, "database", main_project),
     
-    results_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", main_project, gtf_version),
-    logs_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/logs"),
-    tpm_folder = file.path("~/rds/hpc-work/SR/recount3-database-project/results", main_project, "tpm")
+    results_folder = file.path(base_folder, "results", main_project, gtf_version),
+    logs_folder = file.path(base_folder, "logs"),
+    tpm_folder = file.path(base_folder, "results", main_project, "tpm")
   )
 
 dir.create(path = args$database_folder, recursive = T, showWarnings = F)
@@ -95,17 +110,25 @@ metadata <- if (!file.exists(metadata_path)) {
 
 target_RBPs <- (metadata %>% dplyr::pull(target_gene) %>% unique())
 
+
+
 ###############################################################
-if (analysis_type == "shRNA") {
-  metadata <- metadata %>%
-    dplyr::filter(if_any(c("Splicing regulation", Spliceosome, "Novel RBP", "Exon Junction Complex", NMD), ~ . != 0))
-}
-target_RBPs <- c("EFTUD2","FUBP1","HNRNPC","NCBP2","PCBP2","PUF60",
-                 "RAVER1","RBM22","U2AF1","U2AF2","PRPF4","SART3","SF3B4",
-                 "MAGOH","SAFB2") %>% sort()
-   #c("ADAR","AQR","TARDBP","UPF1","UPF2")
-metadata <- metadata %>% dplyr::filter(target_gene %in% target_RBPs)
-metadata %>% distinct(target_gene) %>% arrange(target_gene)
+
+base_path <- "/home/sg2173/PROJECTS/srRNAseq/recount3-database-project/results/ENCODE_SR_1read_shRNA/116/"
+existing_dirs <- list.dirs(base_path, full.names = FALSE, recursive = FALSE)
+filtered_RBPs <- target_RBPs[target_RBPs %in% existing_dirs]
+
+# if (analysis_type == "shRNA") {
+#   metadata <- metadata %>%
+#     dplyr::filter(if_any(c("Splicing regulation", Spliceosome, "Novel RBP", "Exon Junction Complex", NMD), ~ . != 0))
+# }
+# target_RBPs <- "UPF1"
+# c("EFTUD2","FUBP1","HNRNPC","NCBP2","PCBP2","PUF60",
+#                  "RAVER1","RBM22","U2AF1","U2AF2","PRPF4","SART3","SF3B4",
+#                  "MAGOH","SAFB2") %>% sort()
+# c("ADAR","AQR","TARDBP","UPF1","UPF2")
+metadata <- metadata %>% dplyr::filter(target_gene %in% filtered_RBPs)
+#metadata %>% distinct(target_gene) %>% arrange(target_gene)
 ###############################################################
 
 
@@ -125,7 +148,10 @@ DownloadKnockdownEfficiencyTPM(metadata,
 
 
 ## 4. If not all sample experiments have been downloaded and their junctions extracted, download the .bam files
-for (RBP in target_RBPs) {
+for (RBP in filtered_RBPs) {
+  
+  # RBP = filtered_RBPs[1]
+  
   if (nrow(CheckDownloadedFiles(RBP.metadata = metadata %>% filter(target_gene == RBP), 
                                 RBP.path = file.path(args$results_folder, RBP, "/"))) != 
       nrow(metadata %>% filter(target_gene == RBP))) {
@@ -161,10 +187,10 @@ for (RBP in target_RBPs) {
                     database.path = args$database_root_folder,
                     gtf.version = gtf_version,
                     blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
-                    gtf.path = file.path(args$dependencies_folder, paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+                    gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
                     ENCODE.silencing.series = analysis_type,
                     num.cores = args$num_cores,
-                    replace = args$replace)
+                    replace = T)
   
   
   
@@ -173,72 +199,72 @@ for (RBP in target_RBPs) {
   ## JUNCTION PAIRING AND QC
   
 
-  JunctionPairing(recount3.project.IDs = target_RBPs,
+  JunctionPairing(recount3.project.IDs = filtered_RBPs,
                   results.folder = args$results_folder,
                   num.cores = args$num_cores,
                   replace = args$replace)
 
 
-  GetAllAnnotatedSplitReads(recount3.project.IDs = target_RBPs,
+  GetAllAnnotatedSplitReads(recount3.project.IDs = filtered_RBPs,
                             database.folder = args$database_folder,
                             results.folder = args$results_folder,
                             num.cores = args$num_cores,
-                            replace = args$replace)
+                            replace = T)
 
 
-  GetAllRawJxnPairings(recount3.project.IDs = target_RBPs,
-                       database.folder = args$database_folder,
-                       results.folder = args$results_folder,
-                       num.cores = args$num_cores,
-                       replace = args$replace)
-  
-  
-  
-  GetAllRawNovelCombos(recount3.project.IDs = target_RBPs,
-                       database.folder = args$database_folder,
-                       results.folder = args$results_folder,
-                       replace = args$replace)
-
-
-  
-  #################################################
-  ## DATA BASE PREP
-  
-   
-  all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
-
-
-  TidyDataPiorSQL(recount3.project.IDs = all_final_projects_used,
-                  database.folder = args$database_folder,
-                  levelqc1.folder = args$database_folder,
-                  results.folder = args$results_folder,
-                  replace = args$replace)
-
-
-  GenerateTranscriptBiotypePercentage(gtf.version = gtf_version,
-                                      dependencies.folder = args$dependencies_folder,
-                                      database.folder = args$database_folder,
-                                      replace = args$replace)
-   
-  
-  
-  #################################################
-  ## DATA BASE BUILD
-   
-  database_sqlite_file <- paste0(args$database_folder,  "/", main_project, ".sqlite")
-  SqlDatabaseGeneration(database.sqlite = database_sqlite_file,
-                        recount3.project.IDs = all_final_projects_used,
-                        database.folder = args$database_folder,
-                        results.folder = args$results_folder,
-                        dependencies.folder = args$dependencies_folder,
-                        gtf.version = gtf_version,
-                        max.ent.tool.path = paste0(args$dependencies_folder, "/fordownload/"),
-                        bedtools.path = paste0(args$dependencies_folder, "/bedtools2/"),
-                        hs.fasta.path = paste0(args$dependencies_folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
-                        phastcons.bw.path = paste0(args$dependencies_folder, "/hg38.phastCons17way.bw"),
-                        cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
-                        remove.all = F,
-                        discard.minor.introns = F)
+  # GetAllRawJxnPairings(recount3.project.IDs = filtered_RBPs,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder,
+  #                      num.cores = args$num_cores,
+  #                      replace = args$replace)
+  # 
+  # 
+  # 
+  # GetAllRawNovelCombos(recount3.project.IDs = filtered_RBPs,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder,
+  #                      replace = args$replace)
+  # 
+  # 
+  # 
+  # #################################################
+  # ## DATA BASE PREP
+  # 
+  #  
+  # all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
+  # 
+  # 
+  # TidyDataPiorSQL(recount3.project.IDs = all_final_projects_used,
+  #                 database.folder = args$database_folder,
+  #                 levelqc1.folder = args$database_folder,
+  #                 results.folder = args$results_folder,
+  #                 replace = args$replace)
+  # 
+  # 
+  # GenerateTranscriptBiotypePercentage(gtf.version = gtf_version,
+  #                                     dependencies.folder = args$dependencies_folder,
+  #                                     database.folder = args$database_folder,
+  #                                     replace = args$replace)
+  #  
+  # 
+  # 
+  # #################################################
+  # ## DATA BASE BUILD
+  #  
+  # database_sqlite_file <- paste0(args$database_folder,  "/", main_project, ".sqlite")
+  # SqlDatabaseGeneration(database.sqlite = database_sqlite_file,
+  #                       recount3.project.IDs = all_final_projects_used,
+  #                       database.folder = args$database_folder,
+  #                       results.folder = args$results_folder,
+  #                       dependencies.folder = args$dependencies_folder,
+  #                       gtf.version = gtf_version,
+  #                       max.ent.tool.path = paste0(args$dependencies_folder, "/fordownload/"),
+  #                       bedtools.path = paste0(args$dependencies_folder, "/bedtools2/"),
+  #                       hs.fasta.path = paste0(args$dependencies_folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
+  #                       phastcons.bw.path = paste0(args$dependencies_folder, "/hg38.phastCons17way.bw"),
+  #                       cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
+  #                       remove.all = F,
+  #                       discard.minor.introns = F)
 
   
   
