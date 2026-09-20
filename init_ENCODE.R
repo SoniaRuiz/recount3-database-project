@@ -117,7 +117,7 @@ target_RBPs <- (metadata %>% dplyr::pull(target_gene) %>% unique())
 base_path <- "/home/sg2173/PROJECTS/srRNAseq/recount3-database-project/results/ENCODE_SR_1read_shRNA/116/"
 existing_dirs <- list.dirs(base_path, full.names = FALSE, recursive = FALSE)
 filtered_RBPs <- target_RBPs[target_RBPs %in% existing_dirs]
-
+filtered_RBPs <- filtered_RBPs[-(which(filtered_RBPs == "RBM17"))]
 # if (analysis_type == "shRNA") {
 #   metadata <- metadata %>%
 #     dplyr::filter(if_any(c("Splicing regulation", Spliceosome, "Novel RBP", "Exon Junction Complex", NMD), ~ . != 0))
@@ -142,7 +142,7 @@ metadata <- metadata %>% dplyr::filter(target_gene %in% filtered_RBPs)
 
 ## 3. Download TPM gene data per RBP experiment
 DownloadKnockdownEfficiencyTPM(metadata, 
-                               results.path = args$results_folder,
+                               results.path = args$tpm_folder,
                                replace = F,
                                num.cores = args$num_cores)
 
@@ -180,17 +180,17 @@ for (RBP in filtered_RBPs) {
   ## PREPARE JUNCTIONS FROM KNOCKDOWN EXPERIMENTS
 
 
-  logger::log_info("Starting 'PrepareEncodeData' function ...")
-  PrepareEncodeData(metadata = metadata,
-                    RBP.source.path = args$results_folder,
-                    results.path = args$results_folder,
-                    database.path = args$database_root_folder,
-                    gtf.version = gtf_version,
-                    blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
-                    gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
-                    ENCODE.silencing.series = analysis_type,
-                    num.cores = args$num_cores,
-                    replace = T)
+  # logger::log_info("Starting 'PrepareEncodeData' function ...")
+  # PrepareEncodeData(metadata = metadata,
+  #                   RBP.source.path = args$results_folder,
+  #                   results.path = args$results_folder,
+  #                   database.path = args$database_root_folder,
+  #                   gtf.version = gtf_version,
+  #                   blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
+  #                   gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+  #                   ENCODE.silencing.series = analysis_type,
+  #                   num.cores = args$num_cores,
+  #                   replace = F)
   
   
   
@@ -199,10 +199,10 @@ for (RBP in filtered_RBPs) {
   ## JUNCTION PAIRING AND QC
   
 
-  JunctionPairing(recount3.project.IDs = filtered_RBPs,
-                  results.folder = args$results_folder,
-                  num.cores = args$num_cores,
-                  replace = args$replace)
+  # JunctionPairing(recount3.project.IDs = filtered_RBPs,
+  #                 results.folder = args$results_folder,
+  #                 num.cores = args$num_cores,
+  #                 replace = F)
 
 
   GetAllAnnotatedSplitReads(recount3.project.IDs = filtered_RBPs,
@@ -210,44 +210,45 @@ for (RBP in filtered_RBPs) {
                             results.folder = args$results_folder,
                             num.cores = args$num_cores,
                             replace = T)
+  
+  GetAllRawJxnPairings(recount3.project.IDs = filtered_RBPs,
+                       database.folder = args$database_folder,
+                       results.folder = args$results_folder,
+                       num.cores = args$num_cores,
+                       replace = args$replace)
+
+  GetAllRawNovelCombos(recount3.project.IDs = filtered_RBPs,
+                       database.folder = args$database_folder,
+                       results.folder = args$results_folder,
+                       replace = args$replace)
+
+  GetAllRawUnannotated(recount3.project.IDs = filtered_RBPs,
+                       database.folder = args$database_folder,
+                       results.folder = args$results_folder,
+                       replace = args$replace)
 
 
-  # GetAllRawJxnPairings(recount3.project.IDs = filtered_RBPs,
-  #                      database.folder = args$database_folder,
-  #                      results.folder = args$results_folder,
-  #                      num.cores = args$num_cores,
-  #                      replace = args$replace)
-  # 
-  # 
-  # 
-  # GetAllRawNovelCombos(recount3.project.IDs = filtered_RBPs,
-  #                      database.folder = args$database_folder,
-  #                      results.folder = args$results_folder,
-  #                      replace = args$replace)
-  # 
-  # 
-  # 
-  # #################################################
-  # ## DATA BASE PREP
-  # 
-  #  
-  # all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
-  # 
-  # 
-  # TidyDataPiorSQL(recount3.project.IDs = all_final_projects_used,
-  #                 database.folder = args$database_folder,
-  #                 levelqc1.folder = args$database_folder,
-  #                 results.folder = args$results_folder,
-  #                 replace = args$replace)
-  # 
-  # 
-  # GenerateTranscriptBiotypePercentage(gtf.version = gtf_version,
-  #                                     dependencies.folder = args$dependencies_folder,
-  #                                     database.folder = args$database_folder,
-  #                                     replace = args$replace)
-  #  
-  # 
-  # 
+  #################################################
+  ## DATA BASE PREP
+
+
+  all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
+
+
+  TidyDataPiorSQL(recount3.project.IDs = all_final_projects_used,
+                  database.folder = args$database_folder,
+                  levelqc1.folder = args$database_folder,
+                  results.folder = args$results_folder,
+                  replace = args$replace)
+
+
+  GenerateTranscriptBiotypePercentage(gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+                                      dependencies.folder = args$dependencies_folder,
+                                      database.folder = args$database_folder,
+                                      replace = args$replace)
+
+
+
   # #################################################
   # ## DATA BASE BUILD
   #  

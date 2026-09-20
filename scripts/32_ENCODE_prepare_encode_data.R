@@ -31,7 +31,7 @@ PrepareEncodeData <- function(metadata,
                               replace) {
   
   
-  #logger::log_info("Starting junction reading for the RPBs...")
+  logger::log_info("Starting junction reading for the RPBs...")
   JunctionReading(metadata = metadata,
                   RBP.source.path = RBP.source.path,
                   results.path = results.path,
@@ -39,24 +39,24 @@ PrepareEncodeData <- function(metadata,
                   ENCODE.silencing.series,
                   num.cores = num.cores,
                   replace)
-  #gc()
-  
-  #logger::log_info("Starting the creation of Level QC1 file...")
+  gc()
+
+  logger::log_info("Starting the creation of Level QC1 file...")
   CreateLevelQ1File(database.path = database.path,
                     blacklist.path,
                     gtf.path = gtf.path,
                     gtf.version = gtf.version,
                     replace)
-  #gc()
+  gc()
   
   
-  #logger::log_info("Starting the creation of the base data per RPB...")
+  logger::log_info("Starting the creation of the base data per RPB...")
   CreateBaseDataPerRBP(metadata = metadata,
                        results.path = results.path,
                        gtf.version = gtf.version,
                        database.path = database.path,
                        replace)
-  #gc()
+  gc()
   
 }
 
@@ -276,15 +276,14 @@ CreateLevelQ1File <- function(database.path,
     
     
     ## 4. Remove uncategorized junctions
-    all_junc_combined_annotated_tidy <- RemoveUncategorizedJunctions(input.SR.details = all_junc_combined_annotated)
-    logger::log_info("Uncategorised split reads removed!")
-    
-    all_junc_combined_annotated_tidy
+    # all_junc_combined_annotated_tidy <- RemoveUncategorizedJunctions(input.SR.details = all_junc_combined_annotated)
+    # logger::log_info("Uncategorised split reads removed!")
+    # all_junc_combined_annotated_tidy
     
     
     ## 5. Remove junctions with ambiguous genes
     dir.create(path = file.path(database.path, gtf.version), recursive = T)
-    all_junc_combined_annotated_tidy <- RemoveAmbiguousJunctions(input.SR.details = all_junc_combined_annotated_tidy |> dplyr::rename(gene_id = gene_id_junction), 
+    all_junc_combined_annotated_tidy <- RemoveAmbiguousJunctions(input.SR.details = all_junc_combined_annotated |> dplyr::rename(gene_id = gene_id_junction), 
                                                                  database.folder = file.path(database.path, gtf.version))
     logger::log_info("Ambiguous split reads removed!")
     
@@ -313,96 +312,118 @@ CreateBaseDataPerRBP <- function(metadata,
                                  replace) {
   
   
-  if (replace) {
+  
     
-    all_split_reads_qc_level1 <- readRDS(file = file.path(database.path, gtf.version, "all_split_reads_qc_level1.rds")) 
-    target_genes <- metadata %>% pull(target_gene) %>% unique()
+  all_split_reads_qc_level1 <- readRDS(file = file.path(database.path, gtf.version, "all_split_reads_qc_level1.rds")) 
+  target_genes <- metadata %>% pull(target_gene) %>% unique()
+  
+  for (RBP in target_genes) {
     
-    for (RBP in target_genes) {
+    # RBP <- target_genes[1]
+    logger::log_info("Working with '", RBP, "' gene...")
+    
+    local_results_path <- file.path(results.path, RBP,  "base_data")
+    dir.create(path = local_results_path, recursive = T)
+    
+    for (cluster in c("case", "control")) {
       
-      # RBP <- target_genes[1]
-      logger::log_info("Working with '", RBP, "' gene...")
+      # cluster <- c("case", "control")[1]
       
-      local_results_path <- file.path(results.path, RBP,  "base_data")
-      dir.create(path = local_results_path, recursive = T)
-      
-      for (cluster in c("case", "control")) {
+      if (file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_raw.rds"))) && 
+          (!file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts.rds"))) || 
+           !file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts_combos.rds"))) ||
+           !file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_combos.rds"))) ||
+           replace)) {
         
-        # cluster <- c("case", "control")[1]
+        logger::log_info("Working with ", RBP, " junctions....")
         
-        if (file.exists(file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_raw.rds")))) {
-          
-          logger::log_info("Working with ", RBP, " junctions....")
-          
-          cluster_metadata <- metadata %>% 
-            filter(target_gene == RBP, experiment_type == cluster)
-          
-          ## Read the samples used
-          samples_used <- readRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_samples_used.rds")))
-          
-          ## Load junctions current RBP
-          all_junc <- readRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_raw.rds")))
-          
-          ## Filter local junctions to get those from the global object passing level1 QC
-          all_junc_tidy <- all_junc %>% 
-            distinct(seqnames, start, end, sampleID, reads, .keep_all = T) %>%
-            dplyr::select(-strand, -junID) %>%
-            inner_join(y = all_split_reads_qc_level1 %>% 
-                         dplyr::select("junID", "seqnames", "start", "end", "strand", "gene_id", "in_ref", "type", "tx_id_junction"),
-                       by = c("seqnames", "start", "end")) %>%
-            dplyr::relocate(strand, .after="end") %>%
-            dplyr::relocate(junID)
-          
-          ## Save the split read counts for the current sample cluster
-          
-          
-          ## 1. Novel donor, novel acceptor and annotated introns
-          split_read_counts <- all_junc_tidy  %>% 
-            filter(sampleID %in% samples_used,
-                   type %in% c("annotated", "novel_donor", "novel_acceptor")) %>%
-            dplyr::select(junID, reads, sampleID) %>%
-            tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
-            mutate(across(everything(), .fns = ~replace_na(.,0)))
-          
-          split_read_counts %>%
-            saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts.rds")))
-          
-          
-          ## Save the details about the split reads for the current sample cluster
-          all_junc_tidy %>%
-            filter(junID %in% split_read_counts$junID) %>%
-            dplyr::bind_rows() %>% 
-            dplyr::distinct() %>%
-            dplyr::distinct(junID, .keep_all = T) %>%
-            dplyr::select(-sampleID) %>%
-            saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads.rds")))
-          
-          
-          ## 2. Novel combos
-          split_read_counts_combos <- all_junc_tidy  %>% 
-            filter(sampleID %in% samples_used, type == "novel_combo") %>%
-            dplyr::select(junID, reads, sampleID) %>%
-            tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
-            mutate(across(everything(), .fns = ~replace_na(.,0)))
-          
-          split_read_counts_combos %>%
-            saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts_combos.rds")))
-          
-          
-          ## Save the details about the split reads for the current sample cluster
-          all_junc_tidy %>%
-            filter(junID %in% split_read_counts_combos$junID) %>%
-            dplyr::bind_rows() %>% 
-            dplyr::distinct() %>%
-            dplyr::distinct(junID, .keep_all = T) %>%
-            dplyr::select(-sampleID) %>%
-            saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_combos.rds")))
-          
-          
-        } else {
-          stop(RBP, " does not have junctions.")
-        }
+        cluster_metadata <- metadata %>% filter(target_gene == RBP, experiment_type == cluster)
+        
+        ## Read the samples used
+        samples_used <- readRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_samples_used.rds")))
+        
+        ## Load junctions current RBP
+        all_junc <- readRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_raw.rds")))
+        
+        ## Filter local junctions to get those from the global object passing level1 QC
+        all_junc_tidy <- all_junc %>% 
+          distinct(seqnames, start, end, sampleID, reads, .keep_all = T) %>%
+          dplyr::select(-strand, -junID) %>%
+          inner_join(y = all_split_reads_qc_level1 %>% 
+                       dplyr::select("junID", "seqnames", "start", "end", "strand", "gene_id", "in_ref", "type", "tx_id_junction"),
+                     by = c("seqnames", "start", "end")) %>%
+          dplyr::relocate(strand, .after="end") %>%
+          dplyr::relocate(junID)
+        
+        ## Save the split read counts for the current sample cluster
+        
+        
+        ## 1. Novel donor, novel acceptor and annotated introns
+        split_read_counts <- all_junc_tidy  %>% 
+          filter(sampleID %in% samples_used,
+                 type %in% c("annotated", "novel_donor", "novel_acceptor")) %>%
+          dplyr::select(junID, reads, sampleID) %>%
+          tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
+          mutate(across(everything(), .fns = ~replace_na(.,0)))
+        
+        split_read_counts %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts.rds")))
+        
+        
+        ## Save the details about the split reads for the current sample cluster
+        all_junc_tidy %>%
+          filter(junID %in% split_read_counts$junID) %>%
+          dplyr::bind_rows() %>% 
+          dplyr::distinct() %>%
+          dplyr::distinct(junID, .keep_all = T) %>%
+          dplyr::select(-sampleID) %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads.rds")))
+        
+        
+        ## 2. Novel combos
+        split_read_counts_combos <- all_junc_tidy  %>% 
+          filter(sampleID %in% samples_used, type == "novel_combo") %>%
+          dplyr::select(junID, reads, sampleID) %>%
+          tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
+          mutate(across(everything(), .fns = ~replace_na(.,0)))
+        
+        split_read_counts_combos %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts_combos.rds")))
+        
+        
+        ## Save the details about the split reads for the current sample cluster
+        all_junc_tidy %>%
+          filter(junID %in% split_read_counts_combos$junID) %>%
+          dplyr::bind_rows() %>% 
+          dplyr::distinct() %>%
+          dplyr::distinct(junID, .keep_all = T) %>%
+          dplyr::select(-sampleID) %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_combos.rds")))
+        
+        
+        ## 3. Unannotated
+        split_read_counts_unannotated <- all_junc_tidy  %>% 
+          filter(sampleID %in% samples_used, type == "unannotated") %>%
+          dplyr::select(junID, reads, sampleID) %>%
+          tidyr::pivot_wider(values_from = reads, names_from = sampleID) %>% 
+          mutate(across(everything(), .fns = ~replace_na(.,0)))
+        
+        split_read_counts_unannotated %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_split_read_counts_unannotated.rds")))
+        
+        all_junc_tidy %>%
+          filter(junID %in% split_read_counts_unannotated$junID) %>%
+          dplyr::bind_rows() %>% 
+          dplyr::distinct() %>%
+          dplyr::distinct(junID, .keep_all = T) %>%
+          dplyr::select(-sampleID) %>%
+          saveRDS(file = file.path(local_results_path, paste0(RBP, "_", cluster, "_all_split_reads_unannotated.rds")))
+        
+        
+      } else {
+        stop(RBP, " does not have junctions.")
       }
     }
   }
+  
 }

@@ -191,6 +191,7 @@ DownloadKnockdownEfficiencyTPM <- function(metadata,
                                            num.cores) {
   
   if (replace) {
+    
     ## Set Variables ----------------------------------------------
     
     results_path <- results.path # file.path(results.path, "/TPM/RBPs/")
@@ -532,7 +533,7 @@ downloadGeneQuantifications <- function(metadata_filtered,
     download_link <- getDownloadLinkGeneQuantification(row)
     
     ## Where to save the file
-    file_path <- paste0(row$path, row$gene_quantification_id, ".tsv")
+    file_path <- file.path(row$path, paste0(row$gene_quantification_id, ".tsv"))
     row$file_path <- file_path
     
     ## If overwrite results is set to TRUE or if the file does not exists or if
@@ -602,6 +603,7 @@ ExtractTPM <- function(metadata_quantifications,
     for (type in experiment_types) {
       
       # type <- experiment_types[1]
+      # type <- experiment_types[2]
       
       metadata_quantifications_local <- metadata_quantifications %>%
         filter(target_gene == RBP,
