@@ -356,3 +356,34 @@ GetMode <- function(vector) {
   uniqv <- unique(vector)
   uniqv[which.max(tabulate(match(vector, uniqv)))]
 }
+
+
+
+# gtf.path = "/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl/Homo_sapiens.GRCh38.116.chr.gtf"
+# utr.introns.path = "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/recount3-database-project/dependencies/UTR_introns_hg38.116.rds"
+ExtractUTRintronsFromReference <- function(gtf.path, utr.introns.path) {
+  
+  gtf_hg38 <- rtracklayer::import(file.path(gtf.path))
+  gtf_hg38_tb <- gtf_hg38 %>% as_tibble()
+  
+  gtf_hg38_tb_utrs <- gtf_hg38_tb %>% filter(type %in% c("five_prime_utr", "three_prime_utr"))
+  
+  gtf_hg38_utr_introns_gr <- gtf_hg38_tb_utrs %>% 
+    mutate(utr_type = type) %>% 
+    ggtranscript::to_intron(., group_var = "transcript_id") %>% 
+    dplyr::select(seqnames, start, end, strand, width, type, utr_type, gene_id, gene_name, gene_biotype, transcript_id, transcript_name, transcript_biotype) %>% 
+    GRanges()
+  
+  gtf_hg38_utr_introns_gr$junID <- as.character(gtf_hg38_utr_introns_gr)
+  
+  # Evaluate using PSEN1 as example
+  # gtf_hg38_tb %>% filter(type %in% c("five_prime_utr", "three_prime_utr"), gene_name == "PSEN1", transcript_id == "ENST00000324501") %>% as.data.frame()
+  
+  gtf_hg38_utr_introns_gr %>%
+    as_tibble %>% 
+    mutate(start = start + 1 ,end = end - 1) %>% ## Convert to intron coordinates
+    GRanges %>%
+    saveRDS(., file.path(utr.introns.path))
+  
+  gtf_hg38_utr_introns_gr %>% return()
+}

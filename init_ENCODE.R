@@ -56,7 +56,7 @@ args <-
     
     results_folder = file.path(base_folder, "results", main_project, gtf_version),
     logs_folder = file.path(base_folder, "logs"),
-    tpm_folder = file.path(base_folder, "results", main_project, "tpm")
+    tpm_folder = file.path(base_folder, "results", main_project,gtf_version)
   )
 
 dir.create(path = args$database_folder, recursive = T, showWarnings = F)
@@ -205,27 +205,27 @@ for (RBP in filtered_RBPs) {
   #                 replace = F)
 
 
-  GetAllAnnotatedSplitReads(recount3.project.IDs = filtered_RBPs,
-                            database.folder = args$database_folder,
-                            results.folder = args$results_folder,
-                            num.cores = args$num_cores,
-                            replace = T)
-  
-  GetAllRawJxnPairings(recount3.project.IDs = filtered_RBPs,
-                       database.folder = args$database_folder,
-                       results.folder = args$results_folder,
-                       num.cores = args$num_cores,
-                       replace = args$replace)
-
-  GetAllRawNovelCombos(recount3.project.IDs = filtered_RBPs,
-                       database.folder = args$database_folder,
-                       results.folder = args$results_folder,
-                       replace = args$replace)
-
-  GetAllRawUnannotated(recount3.project.IDs = filtered_RBPs,
-                       database.folder = args$database_folder,
-                       results.folder = args$results_folder,
-                       replace = args$replace)
+  # GetAllAnnotatedSplitReads(recount3.project.IDs = filtered_RBPs,
+  #                           database.folder = args$database_folder,
+  #                           results.folder = args$results_folder,
+  #                           num.cores = args$num_cores,
+  #                           replace = T)
+  # 
+  # GetAllRawJxnPairings(recount3.project.IDs = filtered_RBPs,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder,
+  #                      num.cores = args$num_cores,
+  #                      replace = args$replace)
+  # 
+  # GetAllRawNovelCombos(recount3.project.IDs = filtered_RBPs,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder,
+  #                      replace = args$replace)
+  # 
+  # GetAllRawUnannotated(recount3.project.IDs = filtered_RBPs,
+  #                      database.folder = args$database_folder,
+  #                      results.folder = args$results_folder,
+  #                      replace = args$replace)
 
 
   #################################################
@@ -234,38 +234,44 @@ for (RBP in filtered_RBPs) {
 
   all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
 
+  
+  # TidyDataPriorSQL(recount3.project.IDs = all_final_projects_used,
+  #                 database.folder = args$database_folder,
+  #                 levelqc1.folder = args$database_folder,
+  #                 results.folder = args$results_folder,
+  #                 replace = args$replace)
+  # 
+  # 
+  # GenerateTranscriptBiotypePercentage(gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+  #                                     dependencies.folder = args$dependencies_folder,
+  #                                     database.folder = args$database_folder,
+  #                                     replace = args$replace)
 
-  TidyDataPiorSQL(recount3.project.IDs = all_final_projects_used,
-                  database.folder = args$database_folder,
-                  levelqc1.folder = args$database_folder,
-                  results.folder = args$results_folder,
-                  replace = args$replace)
 
 
-  GenerateTranscriptBiotypePercentage(gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
-                                      dependencies.folder = args$dependencies_folder,
-                                      database.folder = args$database_folder,
-                                      replace = args$replace)
+  #################################################
+  ## DATA BASE BUILD
 
-
-
-  # #################################################
-  # ## DATA BASE BUILD
-  #  
-  # database_sqlite_file <- paste0(args$database_folder,  "/", main_project, ".sqlite")
-  # SqlDatabaseGeneration(database.sqlite = database_sqlite_file,
-  #                       recount3.project.IDs = all_final_projects_used,
-  #                       database.folder = args$database_folder,
-  #                       results.folder = args$results_folder,
-  #                       dependencies.folder = args$dependencies_folder,
-  #                       gtf.version = gtf_version,
-  #                       max.ent.tool.path = paste0(args$dependencies_folder, "/fordownload/"),
-  #                       bedtools.path = paste0(args$dependencies_folder, "/bedtools2/"),
-  #                       hs.fasta.path = paste0(args$dependencies_folder, "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
-  #                       phastcons.bw.path = paste0(args$dependencies_folder, "/hg38.phastCons17way.bw"),
-  #                       cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
-  #                       remove.all = F,
-  #                       discard.minor.introns = F)
+  database_sqlite_file <- paste0(args$database_folder,  "/", main_project, ".sqlite")
+  SqlDatabaseGeneration(database.sqlite = database_sqlite_file,
+                        recount3.project.IDs = all_final_projects_used,
+                        database.folder = args$database_folder,
+                        results.folder = args$results_folder,
+                        dependencies.folder = args$dependencies_folder,
+                        gtf.path =  file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+                        max.ent.tool.path = file.path(args$dependencies_folder, "fordownload"),
+                        bedtools.path = "/home/sg2173/rds/hpc-work/moved_from_home_dir/tools/bedtools2",
+                        hs.fasta.path = file.path(args$dependencies_folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
+                        phastcons.bw.path = file.path(args$dependencies_folder, "hg38.phastCons17way.bw"),
+                        cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
+                        mane.gtf.path = file.path(args$dependencies_folder, "MANE.GRCh38.v1.5.ensembl_genomic.gtf"),
+                        utr.introns.path = file.path(args$dependencies_folder, paste0("UTR_introns_hg38.", args$gtf_version, ".rds")),
+                        circRNA.path = file.path(args$dependencies_folder, "circRNA_circAtlas_hg38_v3.txt"),
+                        miRNA.path = file.path(args$dependencies_folder, "miRNA_mirgenedb_hg38.gff"),
+                        replace = args$replace,
+                        discard.minor.introns = FALSE,
+                        remove.all = FALSE,
+                        tmp.dir = args$tmp_folder)
 
   
   

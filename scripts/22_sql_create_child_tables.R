@@ -354,9 +354,9 @@ getAnnotatedIntronMisSplicing <- function(results_folder,
 
   ## GET THE GENE TPM --------------------------------------------------------------------------------------------
   
-  df_local_pairings_w_master_w_MSR_w_TPM <- AddMedianTPMValues(results.folder = results_folder, 
-                                                                cluster.samples = samples, 
-                                                                master.gene = master_gene, 
+  df_local_pairings_w_master_w_MSR_w_TPM <- AddMedianTPMValues(results.folder = results_folder,
+                                                               cluster.samples = samples,
+                                                               master.gene = master_gene, 
                                                                 master.transcript = master_transcript,
                                                                 bridge.transcript = bridge_intron_transcript,
                                                                 project.id = project_id, 

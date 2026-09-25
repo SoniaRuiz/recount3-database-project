@@ -29,53 +29,53 @@ SqlCreateMasterTables <- function(database.sqlite,
                                   discard.minor.introns = F) {
   
   
-  # ## A) CREATE MASTER 'METADATA' TABLE -----------------------------------------
-  # TODO if table exists and has data inside skip
-  # 
-  # SqlCreateMasterTableMetadata(database.sqlite,
-  #                              recount3.project.IDs,
-  #                              results.folder)
-  # 
-  # 
-  # 
-  # 
-  # 
-  # 
-  # ## B) CREATE MASTER 'INTRON' TABLE -------------------------------------------
-  # 
-  # SqlCreateMasterTableIntron(database.sqlite,
-  #                            gtf.path,
-  #                            database.folder,
-  #                            results.folder,
-  #                            dependencies.folder,
-  #                            max.ent.tool.path,
-  #                            bedtools.path,
-  #                            hs.fasta.path,
-  #                            phastcons.bw.path,
-  #                            cdts.bw.path, 
-  #                            mane.gtf.path,
-  #                            utr.introns.path,
-  #                            circRNA.path,
-  #                            miRNA.path,
-  #                            discard.minor.introns)
-  # 
-  # 
-  # 
-  # ## C) CREATE MASTER 'NOVEL' TABLE
-  # ## It contains novel 5' and 3' splicing events -------------------------------
-  # 
-  # SqlCreateMasterTableNovel(database.sqlite,
-  #                           gtf.path,
-  #                           database.folder,
-  #                           results.folder,
-  #                           dependencies.folder,
-  #                           max.ent.tool.path,
-  #                           bedtools.path,
-  #                           hs.fasta.path,
-  #                           phastcons.bw.path,
-  #                           cdts.bw.path, 
-  #                           miRNA.path,
-  #                           discard.minor.introns)
+  ## A) CREATE MASTER 'METADATA' TABLE -----------------------------------------
+  ## TODO if table exists and has data inside skip
+
+  SqlCreateMasterTableMetadata(database.sqlite,
+                               recount3.project.IDs,
+                               results.folder)
+
+
+
+
+
+
+  ## B) CREATE MASTER 'INTRON' TABLE -------------------------------------------
+
+  SqlCreateMasterTableIntron(database.sqlite,
+                             gtf.path,
+                             database.folder,
+                             results.folder,
+                             dependencies.folder,
+                             max.ent.tool.path,
+                             bedtools.path,
+                             hs.fasta.path,
+                             phastcons.bw.path,
+                             cdts.bw.path,
+                             mane.gtf.path,
+                             utr.introns.path,
+                             circRNA.path,
+                             miRNA.path,
+                             discard.minor.introns)
+
+
+
+  ## C) CREATE MASTER 'NOVEL' TABLE
+  ## It contains novel 5' and 3' splicing events -------------------------------
+
+  SqlCreateMasterTableNovel(database.sqlite,
+                            gtf.path,
+                            database.folder,
+                            results.folder,
+                            dependencies.folder,
+                            max.ent.tool.path,
+                            bedtools.path,
+                            hs.fasta.path,
+                            phastcons.bw.path,
+                            cdts.bw.path,
+                            miRNA.path,
+                            discard.minor.introns)
   
   
   
@@ -365,10 +365,11 @@ SqlCreateMasterTableIntron <- function(database.sqlite,
     
     ## There should not be any ambiguous introns at this point
     if (any(df_introns_introverse_tidy %>% dplyr::filter(ambiguous == TRUE) %>% nrow() > 0)) {
-      stop("ERROR! Still there are some ambiguous introns")
-    } else {
-      df_introns_introverse_tidy <- df_introns_introverse_tidy %>% dplyr::select(-ambiguous)
-    }
+      message("Removing ",df_introns_introverse_tidy %>% dplyr::filter(ambiguous == TRUE) %>% nrow()," ambiguous introns...")
+      df_introns_introverse_tidy <- df_introns_introverse_tidy %>% dplyr::filter(!ambiguous)
+    } 
+    df_introns_introverse_tidy <- df_introns_introverse_tidy %>% dplyr::select(-ambiguous)
+    
     
     logger::log_info(df_introns_introverse_tidy %>% distinct(ref_junID) %>% nrow(), " annotated introns TO BE STORED IN THE DATABASE...")
     
@@ -1212,7 +1213,7 @@ SqlCreateMasterTableOther <- function(database.sqlite,
 
       logger::log_info("Loading the pre-generated data...")
       df_all_novel_combos <- readRDS(file = file.path(database.folder, "all_raw_novel_combos.rds"))
-      df_all_novel_unannotated <- readRDS(file = file.path(database.folder, "all_raw_novel_unannotated.rds"))
+      df_all_novel_unannotated <- readRDS(file = file.path(database.folder, "all_raw_novel_unannotated.rds")) |> unnest(gene_id)
     
       if (any(names(df_all_novel_combos) == "reads")) {
         df_all_novel_combos <- df_all_novel_combos %>% dplyr::select(-reads)
@@ -1489,7 +1490,9 @@ AddMicroRNAInfo <- function(df_introns_introverse_gr,
   seqlevelsStyle(miRNA_db_gr) <- "Ensembl"
 
   miRNA_db_gr
-  df_introns_introverse_gr
+  
+  seqlevelsStyle(df_introns_introverse_gr) <- "Ensembl"
+  
 
   #2. FindOverlaps
   # "within" as miRNAs are typically 20-22bp long, so it is expected to be nested within the intron
@@ -1519,7 +1522,8 @@ AddCircularRNAInfo <- function(df_introns_introverse_gr,
   seqlevelsStyle(cirRNA_db_gr) <- "Ensembl"
   cirRNA_db_gr
   
-
+  
+  seqlevelsStyle(df_introns_introverse_gr) <- "Ensembl"
   #2. FindOverlaps
   # equal as it marks the back-splice donor-acceptor pair,
   ciRNA_overlap_hits <- findOverlaps(query         = df_introns_introverse_gr,
@@ -1549,7 +1553,8 @@ AddUTRInfo <- function(df_introns_introverse_gr,
     utr_introns_gr <- utr_introns %>% GRanges()
     seqlevelsStyle(utr_introns_gr) <- "Ensembl"
     utr_introns_gr
-
+    seqlevelsStyle(df_introns_introverse_gr) <- "Ensembl"
+    
     # --------------------------------------------------------------------------
     # Find full UTR overlap hits - these are annotated introns
     # --------------------------------------------------------------------------
@@ -1575,30 +1580,5 @@ AddUTRInfo <- function(df_introns_introverse_gr,
 
 }
 
-ExtractUTRintronsFromReference <- function(gtf.path, utr.introns.path) {
 
-    gtf_hg38 <- rtracklayer::import(file.path(gtf.path))
-    gtf_hg38_tb <- gtf_hg38 %>% as_tibble()
-
-    gtf_hg38_tb_utrs <- gtf_hg38_tb %>% filter(type %in% c("five_prime_utr", "three_prime_utr"))
-
-    gtf_hg38_utr_introns_gr <- gtf_hg38_tb_utrs %>% 
-        mutate(utr_type = type) %>% 
-        ggtranscript::to_intron(., group_var = "transcript_id") %>% 
-        dplyr::select(seqnames, start, end, strand, width, type, utr_type, gene_id, gene_name, gene_biotype, transcript_id, transcript_name, transcript_biotype) %>% 
-        GRanges()
-
-    gtf_hg38_utr_introns_gr$junID <- as.character(gtf_hg38_utr_introns_gr)
-
-    # Evaluate using PSEN1 as example
-    # gtf_hg38_tb %>% filter(type %in% c("five_prime_utr", "three_prime_utr"), gene_name == "PSEN1", transcript_id == "ENST00000324501") %>% as.data.frame()
-
-    gtf_hg38_utr_introns_gr %>%
-        as_tibble %>% 
-        mutate(start = start + 1 ,end = end - 1) %>% ## Convert to intron coordinates
-        GRanges %>%
-        saveRDS(., file.path(utr.introns.path))
-
-    gtf_hg38_utr_introns_gr %>% return()
-}
 

@@ -39,11 +39,11 @@ gtf_version <- "116"
 supportive_reads <- 1
 data_subsample = F
 
-#main_project_identifier <- "GTEX"
+main_project_identifier <- "GTEX"
 #main_project_identifier <- "TCGA"
 #main_project_identifier <- "SRP151040"
 #main_project_identifier <- "SRP100948"
-main_project_identifier <- "SRP058181"
+#main_project_identifier <- "SRP058181"
 #main_project_identifier <- "SRP103588"
 
 project_name <- paste0(main_project_identifier, "_", supportive_reads, "read_subsample", data_subsample)
@@ -52,22 +52,23 @@ base_folder <- "/home/sg2173/PROJECTS/srRNAseq/recount3-database-project/"
 
 args <-
   list(
-    replace = TRUE,
+    
     num_cores = 4,
-    base_folder = base_folder, 
-    dependencies_folder = file.path("/home/sg2173/rds/rds-rytenlab-2Hstq49W5EY/sruiz/srRNAseq/recount3-database-project/dependencies"),
+    base_folder = base_folder,
     
-    # data_source = "data_sources/gtex",
-    # recount3_project_IDs = c("ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
-    #                          "BRAIN",           "BREAST",          "CERVIX_UTERI",    "COLON",           "ESOPHAGUS",       "FALLOPIAN_TUBE",
-    #                          "HEART",           "KIDNEY",          "LIVER",           "LUNG",            "MUSCLE",          "NERVE",
-    #                          "OVARY",           "PANCREAS",        "PITUITARY",       "PROSTATE",        "SALIVARY_GLAND",  "SKIN",
-    #                          "SMALL_INTESTINE", "SPLEEN",          "STOMACH",         "TESTIS",          "THYROID",         "UTERUS",
-    #                          "VAGINA"  ),
+    dependencies_folder = file.path(base_folder, "dependencies"),
+    
+    data_source = "data_sources/gtex",
+    recount3_project_IDs = c("ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
+                             "BRAIN",           "BREAST",          "CERVIX_UTERI",    "COLON",           "ESOPHAGUS",       "FALLOPIAN_TUBE",
+                             "HEART",           "KIDNEY",          "LIVER",           "LUNG",            "MUSCLE",          "NERVE",
+                             "OVARY",           "PANCREAS",        "PITUITARY",       "PROSTATE",        "SALIVARY_GLAND",  "SKIN",
+                             "SMALL_INTESTINE", "SPLEEN",          "STOMACH",         "TESTIS",          "THYROID",         "UTERUS",
+                             "VAGINA"  ),
     
     
-    data_source = "data_sources/sra",
-    recount3_project_IDs = main_project_identifier,
+    # data_source = "data_sources/sra",
+    # recount3_project_IDs = main_project_identifier,
     
     # data_source = "data_sources/tcga",
     # recount3_project_IDs = c("ACC","BLCA","BRCA","CESC","CHOL","COAD","DLBC","ESCA","GBM","HNSC",
@@ -75,13 +76,16 @@ args <-
     #                           "LUSC","MESO","OV","PAAD","PCPG","PRAD","READ",
     #                           "SARC","SKCM","STAD","TGCT","THCA","THYM","UCEC","UCS","UVM") %>%  sort(),
     
-    gtf_version = "URA",
+    gtf_version = 116,
     gtf_path = "/home/sg2173/rds/rds-rytenlab-2Hstq49W5EY/sruiz/reference/ensembl/Homo_sapiens.GRCh38.116.chr.gtf",
     database_folder = file.path(base_folder, "database", project_name, gtf_version),
     results_folder = file.path(base_folder, "results", project_name, gtf_version),
     tpm_folder = file.path(base_folder, "results", project_name, "tpm"),
     logs_folder = file.path(base_folder, "logs"),
-    tmp_folder = "/local/sg2173"
+    tmp_folder = "/local/sg2173",
+    
+    
+    replace = TRUE
     
     
   )
@@ -94,16 +98,15 @@ dir.create(path = args$logs_folder, recursive = T, showWarnings = F)
 
 
 ## Example other recount3 project identifiers
-
 ## Array with the IDs of the project to database as provided by recount3
 ## recount3 projects ID be checked here: https://jhubiostatistics.shinyapps.io/recount3-study-explorer/
 
-# recount3_project_IDs <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
-#                            "BRAIN",           "BREAST",          "CERVIX_UTERI",    "COLON",           "ESOPHAGUS",       "FALLOPIAN_TUBE",
-#                            "HEART",           "KIDNEY",          "LIVER",           "LUNG",            "MUSCLE",          "NERVE",
-#                            "OVARY",           "PANCREAS",        "PITUITARY",       "PROSTATE",        "SALIVARY_GLAND",  "SKIN",
-#                            "SMALL_INTESTINE", "SPLEEN",          "STOMACH",         "TESTIS",          "THYROID",         "UTERUS",
-#                            "VAGINA"  )
+recount3_project_IDs <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
+                           "BRAIN",           "BREAST",          "CERVIX_UTERI",    "COLON",           "ESOPHAGUS",       "FALLOPIAN_TUBE",
+                           "HEART",           "KIDNEY",          "LIVER",           "LUNG",            "MUSCLE",          "NERVE",
+                           "OVARY",           "PANCREAS",        "PITUITARY",       "PROSTATE",        "SALIVARY_GLAND",  "SKIN",
+                           "SMALL_INTESTINE", "SPLEEN",          "STOMACH",         "TESTIS",          "THYROID",         "UTERUS",
+                           "VAGINA"  )
 
 # recount3_project_IDs <- c("ACC","BLCA","BRCA","CESC","CHOL","COAD","DLBC","ESCA","GBM","HNSC",
 #                          "KICH","KIRC","KIRP","LAML","LGG","LIHC","LUAD",
@@ -159,26 +162,26 @@ dir.create(path = results_folder, recursive = T, showWarnings = F)
 #################################################
 ## DOWNLOAD AND PREPARE JUNCTIONS FROM RECOUNT3 PROJECTS
 
-DownloadRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
-                     project.name = project_name,
-                     gtf.version = args$gtf_version,
-                     blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
-                     gtf.path = args$gtf_path,
-                     data.source = args$data_source,
-                     database.folder = args$database_folder,
-                     results.folder = args$results_folder,
-                     tmp.dir = args$tmp_folder,
-                     replace = args$replace)
+# DownloadRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
+#                      project.name = project_name,
+#                      gtf.version = args$gtf_version,
+#                      blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
+#                      gtf.path = args$gtf_path,
+#                      data.source = args$data_source,
+#                      database.folder = args$database_folder,
+#                      results.folder = args$results_folder,
+#                      tmp.dir = args$tmp_folder,
+#                      replace = args$replace)
 
-PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
-                    data.source = args$data_source,
-                    results.folder = args$results_folder,
-                    levelqc1.folder = args$database_folder,
-                    supporting.reads = supportive_reads,
-                    num.cores = args$num_cores,
-                    replace = args$replace,
-                    subsampling = data_subsample,
-                    tmp.dir = args$tmp_folder)
+# PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
+#                     data.source = args$data_source,
+#                     results.folder = args$results_folder,
+#                     levelqc1.folder = args$database_folder,
+#                     supporting.reads = supportive_reads,
+#                     num.cores = args$num_cores,
+#                     replace = args$replace,
+#                     subsampling = data_subsample,
+#                     tmp.dir = args$tmp_folder)
 
 
 
@@ -191,8 +194,6 @@ PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
 #                 num.cores = args$num_cores,
 #                 replace = args$replace)
 
-
-
 # GetAllAnnotatedSplitReads(recount3.project.IDs = args$recount3_project_IDs,
 #                           database.folder = args$database_folder,
 #                           results.folder = args$results_folder,
@@ -204,12 +205,12 @@ PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
 #                      results.folder = args$results_folder,
 #                      num.cores = args$num_cores,
 #                      replace = args$replace)
-# 
+
 # GetAllRawNovelCombos(recount3.project.IDs = args$recount3_project_IDs,
 #                      database.folder = args$database_folder,
 #                      results.folder = args$results_folder,
 #                      replace = args$replace)
-# 
+
 # GetAllRawUnannotated(recount3.project.IDs = args$recount3_project_IDs,
 #                      database.folder = args$database_folder,
 #                      results.folder = args$results_folder,
@@ -218,7 +219,7 @@ PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
 #################################################
 ## DATA BASE PREP
 
-# recount3_project_IDs_used <- readRDS(file = file.path(args$results_folder, "all_final_projects_used.rds"))
+recount3_project_IDs_used <- readRDS(file = file.path(args$results_folder, "all_final_projects_used.rds"))
 
 
 # TidyDataPriorSQL(recount3.project.IDs = recount3_project_IDs_used,
@@ -226,15 +227,14 @@ PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
 #                 levelqc1.folder = args$database_folder,
 #                 results.folder = args$results_folder,
 #                 replace = args$replace)
-# 
-# 
-# GenerateTranscriptBiotypePercentage(gtf.path = file.path(args$dependencies_folder,
-#                                                          paste0("/Homo_sapiens.GRCh38.", args$gtf_version, ".chr.gtf")),
+
+
+# GenerateTranscriptBiotypePercentage(gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
 #                                     dependencies.folder = args$dependencies_folder,
 #                                     database.folder = args$database_folder,
 #                                     replace = args$replace)
-
-
+# 
+# 
 # GenerateRecount3TPM(recount3.project.IDs = c(recount3_project_IDs_used),
 #                     data.source = args$data_source,
 #                     tpm.folder = args$tpm_folder,
@@ -248,27 +248,27 @@ PrepareRecount3Data(recount3.project.IDs = args$recount3_project_IDs,
 ## DATA BASE BUILD
 
 
-# database_sqlite_path <- paste0(args$database_folder,  "/", project_name, ".sqlite")
-# 
-# SqlDatabaseGeneration(database.sqlite = database_sqlite_path,
-#                       recount3.project.IDs = recount3_project_IDs_used,
-#                       database.folder = args$database_folder,
-#                       results.folder = args$results_folder,
-#                       dependencies.folder = args$dependencies_folder,
-#                       gtf.path = file.path(args$dependencies_folder, paste0("Homo_sapiens.GRCh38.", args$gtf_version, ".chr.gtf")),
-#                       max.ent.tool.path = file.path(args$dependencies_folder, "fordownload"),
-#                       bedtools.path = file.path(args$dependencies_folder, "bedtools2"),
-#                       hs.fasta.path = file.path(args$dependencies_folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
-#                       phastcons.bw.path = file.path(args$dependencies_folder, "hg38.phastCons17way.bw"),
-#                       cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
-#                       mane.gtf.path = file.path(args$dependencies_folder, "MANE.GRCh38.v1.5.ensembl_genomic.gtf"),
-#                       utr.introns.path = file.path(args$dependencies_folder, paste0("UTR_introns_hg38.", args$gtf_version, ".rds")),
-#                       circRNA.path = file.path(args$dependencies_folder, "circRNA_circAtlas_hg38_v3.txt"),
-#                       miRNA.path = file.path(args$dependencies_folder, "miRNA_mirgenedb_hg38.gff"),
-#                       replace = args$replace,
-#                       discard.minor.introns = FALSE,
-#                       remove.all = TRUE,
-#                       tmp.dir = args$tmp_folder)
+database_sqlite_path <- paste0(args$database_folder,  "/", project_name, ".sqlite")
+
+SqlDatabaseGeneration(database.sqlite = database_sqlite_path,
+                      recount3.project.IDs = recount3_project_IDs_used,
+                      database.folder = args$database_folder,
+                      results.folder = args$results_folder,
+                      dependencies.folder = args$dependencies_folder,
+                      gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+                      max.ent.tool.path = file.path(args$dependencies_folder, "fordownload"),
+                      bedtools.path = "/home/sg2173/rds/hpc-work/moved_from_home_dir/tools/bedtools2",
+                      hs.fasta.path = file.path(args$dependencies_folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
+                      phastcons.bw.path = file.path(args$dependencies_folder, "hg38.phastCons17way.bw"),
+                      cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
+                      mane.gtf.path = file.path(args$dependencies_folder, "MANE.GRCh38.v1.5.ensembl_genomic.gtf"),
+                      utr.introns.path = file.path(args$dependencies_folder, paste0("UTR_introns_hg38.", args$gtf_version, ".rds")),
+                      circRNA.path = file.path(args$dependencies_folder, "circRNA_circAtlas_hg38_v3.txt"),
+                      miRNA.path = file.path(args$dependencies_folder, "miRNA_mirgenedb_hg38.gff"),
+                      replace = args$replace,
+                      discard.minor.introns = FALSE,
+                      remove.all = TRUE,
+                      tmp.dir = args$tmp_folder)
 
 #}
 

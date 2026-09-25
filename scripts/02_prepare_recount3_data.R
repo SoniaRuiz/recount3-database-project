@@ -1,4 +1,3 @@
-
 #' Title
 #' Separates the quality-controlled split-read data by sample cluster for a given recount3 project
 #' (e.g. by case/control cluster, by tissue, etc. )
@@ -51,6 +50,18 @@ PrepareRecount3Data <- function(recount3.project.IDs,
       
       local_folder_results <- file.path(results.folder, project_id, "base_data")
       dir.create(file.path(local_folder_results), recursive = TRUE, showWarnings = F)
+      
+      ## Resume support: a project is only considered complete once its
+      ## "_clusters_used.rds" marker file has been written (the last file
+      ## saved for a project). If that marker exists and replace = TRUE,
+      ## skip this project entirely rather than redoing it from scratch.
+      project_marker_file <- file.path(local_folder_results, paste0(project_id, "_clusters_used.rds"))
+      
+      if (replace && file.exists(project_marker_file)) {
+        
+        logger::log_info(project_id, " - already completed in a previous run. Skipping.")
+        
+      } else {
       
       logger::log_info(project_id, " - downloading junction data from recount3")
       
@@ -344,6 +355,8 @@ PrepareRecount3Data <- function(recount3.project.IDs,
       rm(metadata.info)
       rm(metadata_tidy)
       gc()
+      
+      } # end of else (project not already completed)
     }
   }
 }

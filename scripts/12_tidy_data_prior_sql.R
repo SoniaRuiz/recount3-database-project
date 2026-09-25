@@ -95,9 +95,13 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
     if (ind %>% length() > 0) {
       all_split_reads_details_qc_level2[ind, "junID"] <- str_replace(string = all_split_reads_details_qc_level2[ind, "junID"]$junID, 
                                                                      pattern = "\\*", 
-                                                                     replacement = all_split_reads_details_qc_level2[ind, "strand"]$strand %>% as.character() )
+                                                                     replacement = all_split_reads_details_qc_level2[ind, "strand"]$strand %>% 
+                                                                       as.character() )
       if (any(str_detect(all_split_reads_details_qc_level2$junID, pattern = "\\*")) ) {
-        stop("ERROR! LEVEL 2 SPLIT READS still contain '*' in the junID of the reference intron")
+        all_split_reads_details_qc_level2 <- all_split_reads_details_qc_level2[-ind, ]
+        if (any(str_detect(all_split_reads_details_qc_level2$junID, pattern = "\\*")) ) {
+          stop("ERROR! LEVEL 2 SPLIT READS still contain '*' in the junID of the reference intron")
+        }
       }
     }
     
@@ -289,11 +293,13 @@ TidyDataPriorSQL <- function (recount3.project.IDs,
     df_all_jxn_pairings_tidy <- rbind(df_all_jxn_pairings_tidy, 
                                       df_reassigned_ambig_novel_final %>% dplyr::select(-ref_chosen, -distances_sd))
     
+    
     ## Introns may parent multiple novel junctions. Hence, annotated introns that are left orphaned after
     ## re-assingning the chosen ref intron to the ambiguous novel junctions are:
     (df_ambiguous_novel %>% 
         distinct(ref_junID) %>% nrow()) - (intersect(c(df_all_jxn_pairings_tidy$novel_junID, df_all_jxn_pairings_tidy$ref_junID),
                                                      df_ambiguous_novel$ref_junID %>% unique) %>% length())
+    
     
     ## 3. Get ambiguous figures and stats
     ## This is the number of unique novel junctions to be stored in the DB

@@ -194,7 +194,7 @@ DownloadKnockdownEfficiencyTPM <- function(metadata,
     
     ## Set Variables ----------------------------------------------
     
-    results_path <- results.path # file.path(results.path, "/TPM/RBPs/")
+    results_path <- file.path(results.path)
     dir.create(results_path, recursive = T, showWarnings = F)
     
     main_path <- results.path # file.path(results.path, "/TPM/RBPs/")
