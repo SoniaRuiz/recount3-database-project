@@ -73,7 +73,9 @@ SeparateClusters <- function(recount3.project.IDs,
       
       project_metadata_tidy <- project_metadata_tidy %>%
         rowwise() %>%
-        dplyr::mutate(cluster = paste0(`cell type`, " - " ,`disease state`) %>% str_remove_all(pattern = "\\'") %>% str_remove(" ")) %>%
+        dplyr::mutate(cluster = paste0(`cell type`, " - " ,`disease state`) %>% 
+                        str_remove_all(pattern = "\\'") %>% 
+                        str_remove(" ")) %>%
         ungroup()
       
     } else if ( recount3.project.IDs == "SRP100948" ) {
@@ -126,6 +128,12 @@ SeparateClusters <- function(recount3.project.IDs,
                                  yes = "Control",
                                  no = "FamilialAD")) %>%
         ungroup() 
+    } else if ( recount3.project.IDs == "SRP083135" ) {
+      
+      project_metadata_tidy <- project_metadata_tidy %>%
+        #separate_rows(sra.experiment_title, sep = "\\:\\s*") %>%
+        separate(sra.experiment_title, into = c('col1', 'organism', 'library'), sep = ";") %>% 
+        separate(col1, into = c('GSM', 'cluster'), sep = ":") 
     }
     
     

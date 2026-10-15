@@ -187,9 +187,9 @@ DownloadRecount3Data <- function (recount3.project.IDs,
     rm(all_split_reads_raw_tidy_gr)
     rm(edb)
     
-    # ################################################################################
-    # ## 5. Discard all junctions that are not annotated, novel donor or novel acceptor
-    # ################################################################################
+    ################################################################################
+    ## 5. Discard all junctions that are not annotated, novel donor or novel acceptor
+    ################################################################################
     
     # ## Remove uncategorized junctions
     # all_split_reads_details_w_symbol <- RemoveUncategorizedJunctions(input.SR.details = all_split_reads_details_w_symbol)

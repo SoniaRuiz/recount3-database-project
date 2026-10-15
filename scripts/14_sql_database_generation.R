@@ -48,7 +48,8 @@ SqlDatabaseGeneration <- function(database.sqlite,
   }
   
   
-  if (!all(c('metadata', 'intron', 'novel', 'gene', 'transcript', 'other') %in% tables)) {
+  if (!all(c('metadata', 'intron', 'novel', 'gene', 'transcript', 'other', 
+             'bridge_other_transcript', 'bridge_intron_transcript') %in% tables)) {
     
     logger::log_info("Creating master tables ...")
     SqlCreateMasterTables(database.sqlite = database.sqlite,

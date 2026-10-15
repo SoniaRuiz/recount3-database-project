@@ -71,22 +71,19 @@ ENCODEDownloadMetadata <- function(experiment_type,
   # 
   # valid_target_genes <- c(input_target_gene_categories$name, input_target_gene_NMD) %>% unique() %>% sort()
   
+  
   # 2. Pipeline ----
-  
   ## Download the search data ----
-  URL = "https://www.encodeproject.org/search/?type=Experiment&assay_title=shRNA+RNA-seq&control_type!=*&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&limit=all&format=json"
+  if (experiment_type == "CRISPR") {
+    URL = "https://www.encodeproject.org/search/?type=Experiment&assay_title=CRISPR+RNA-seq&control_type!=*&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&limit=all&format=json"
+  } else {
+    URL = "https://www.encodeproject.org/search/?type=Experiment&assay_title=shRNA+RNA-seq&control_type!=*&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&limit=all&format=json"
+  }
   
-  ## LONG READ
-  # URL = "https://www.encodeproject.org/search/?type=Experiment&control_type!=*&assay_term_name=long+read+RNA-seq&status=released&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&files.platform.term_name=Pacific+Biosciences+Sequel+II&replicates.library.nucleic_acid_term_name=polyadenylated+mRNA&assembly=GRCh38&limit=all&format=json"
-  ## CRISPR
-  #URL = "https://www.encodeproject.org/search/?type=GeneSilencingSeries&searchTerm=gene+silencing&target.investigated_as=RNA+binding+protein&target.investigated_as=transcription+factor&assay_term_name=CRISPR+genome+editing+followed+by+RNA-seq&related_datasets.replicates.library.biosample.applied_modifications.method=CRISPR&organism.scientific_name=Homo+sapiens&assembly=GRCh38&related_datasets.files.file_type=bam&related_datasets.files.file_type=bigWig&award.rfa=ENCODE4&status=released&limit=all&format=json"
-  ## shRNA
-  
-  
-  
+
   ## Query the ENCODE API to download a list of experiments in json format ---
   response_data <- GetUrlResponse(URL, output_file = output_json)
-  
+
   
   
   
@@ -180,24 +177,7 @@ GenerateSummary <- function(response_data,
     
     experiment <- response_data$`@graph`[i, ]
     
-    if ( experiment$assay_term_name[[1]] == "CRISPR genome editing followed by RNA-seq" ) {
-      
-      biosample_ontology <- experiment$biosample_ontology[[1]]$term_name
-      target_gene <- experiment$target[[1]]$label
-      gene_silencing_series <- experiment$accession
-      
-      ## Extract the Gene Silencing Series
-      sample_id <- sapply(experiment$related_datasets[[1]]$`@id`, function(x) str_split(string = x, pattern = "/")[[1]][3])
-      
-      
-      tmp_df <- tibble::tibble(target_gene = target_gene,
-                               experiment_id = sample_id,
-                               cell_line = biosample_ontology,
-                               gene_silencing_series = gene_silencing_series)
-      summary_df <- rbind(summary_df, tmp_df)
-      
-    } 
-    else if ( experiment$assay_term_name[[1]] == "long read RNA-seq" ) {
+    if ( experiment$assay_term_name[[1]] == "long read RNA-seq" ) {
       
       ## Only process if not audit warnings
       if ( is.null(experiment$audit.NOT_COMPLIANT[[1]]) ) {

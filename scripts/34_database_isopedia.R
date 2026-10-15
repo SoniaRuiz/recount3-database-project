@@ -17,7 +17,8 @@ library(data.table)
 run = FALSE
 
 if (run) {
-  options(width = 200)
+  
+  #options(width = 200)
   
   # BiocManager::install("SGSeq")
   # source("/home/sruiz/POST_DOC/recount3-database-project/scripts/34_database_isopedia.R")

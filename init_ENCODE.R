@@ -37,7 +37,7 @@ gtf_version <- c(116)
 
 ## This is the name of the project producing the database
 min_supporting_reads <- 1
-analysis_type = "shRNA" ## This can also be CRISPR
+analysis_type = "CRISPR" ## This can be "CRISPR", "shRNA"
 
 main_project <- paste0("ENCODE_SR_", min_supporting_reads, "read_", analysis_type)
 
@@ -45,8 +45,8 @@ base_folder <- "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/
 
 args <-
   list(
-    replace = F,
-    num_cores = 1,
+    replace = TRUE,
+    num_cores = 74,
     base_folder = "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/recount3-database-project/",
     dependencies_folder = file.path(base_folder, "dependencies"),
     tools_folder = file.path("/home/sg2173/tools"),
@@ -105,6 +105,7 @@ metadata <- if (!file.exists(metadata_path)) {
   metadata <- ENCODEDownloadMetadata(experiment_type = analysis_type,
                                      results_path = args$results_folder,
                                      dependencies_path = args$dependencies_folder)
+  metadata$assay |> unique() |> print()
 } else { readr::read_tsv(file = metadata_path, show_col_types = F) }
 
 
@@ -114,10 +115,10 @@ target_RBPs <- (metadata %>% dplyr::pull(target_gene) %>% unique())
 
 ###############################################################
 
-base_path <- "/home/sg2173/PROJECTS/srRNAseq/recount3-database-project/results/ENCODE_SR_1read_shRNA/116/"
-existing_dirs <- list.dirs(base_path, full.names = FALSE, recursive = FALSE)
-filtered_RBPs <- target_RBPs[target_RBPs %in% existing_dirs]
-filtered_RBPs <- filtered_RBPs[-(which(filtered_RBPs == "RBM17"))]
+# base_path <- "/home/sg2173/PROJECTS/srRNAseq/recount3-database-project/results/ENCODE_SR_1read_shRNA/116/"
+# existing_dirs <- list.dirs(base_path, full.names = FALSE, recursive = FALSE)
+# filtered_RBPs <- target_RBPs[target_RBPs %in% existing_dirs]
+# filtered_RBPs <- filtered_RBPs[-(which(filtered_RBPs == "RBM17"))]
 # if (analysis_type == "shRNA") {
 #   metadata <- metadata %>%
 #     dplyr::filter(if_any(c("Splicing regulation", Spliceosome, "Novel RBP", "Exon Junction Complex", NMD), ~ . != 0))
@@ -127,7 +128,7 @@ filtered_RBPs <- filtered_RBPs[-(which(filtered_RBPs == "RBM17"))]
 #                  "RAVER1","RBM22","U2AF1","U2AF2","PRPF4","SART3","SF3B4",
 #                  "MAGOH","SAFB2") %>% sort()
 # c("ADAR","AQR","TARDBP","UPF1","UPF2")
-metadata <- metadata %>% dplyr::filter(target_gene %in% filtered_RBPs)
+# metadata <- metadata %>% dplyr::filter(target_gene %in% filtered_RBPs)
 #metadata %>% distinct(target_gene) %>% arrange(target_gene)
 ###############################################################
 
@@ -143,14 +144,14 @@ metadata <- metadata %>% dplyr::filter(target_gene %in% filtered_RBPs)
 ## 3. Download TPM gene data per RBP experiment
 DownloadKnockdownEfficiencyTPM(metadata, 
                                results.path = args$tpm_folder,
-                               replace = F,
+                               replace = FALSE,
                                num.cores = args$num_cores)
 
 
 ## 4. If not all sample experiments have been downloaded and their junctions extracted, download the .bam files
-for (RBP in filtered_RBPs) {
+for (RBP in target_RBPs) {
   
-  # RBP = filtered_RBPs[1]
+  # RBP = target_RBPs[1]
   
   if (nrow(CheckDownloadedFiles(RBP.metadata = metadata %>% filter(target_gene == RBP), 
                                 RBP.path = file.path(args$results_folder, RBP, "/"))) != 
@@ -160,7 +161,10 @@ for (RBP in filtered_RBPs) {
     ENCODEDownloadBams(metadata = metadata, 
                        results.path = args$results_folder,
                        regtools.path = file.path(args$tools_folder, "regtools/build/"),
-                       samtools.path = file.path(args$tools_folder, "samtools-1.21/bin/"))
+                       samtools.path = file.path(args$tools_folder, "samtools-1.21/bin/"),
+                       download.cores = 74,
+                       samtools.threads = 1,
+                       samtools.memory = "1G")
   }
 }
 
@@ -180,17 +184,17 @@ for (RBP in filtered_RBPs) {
   ## PREPARE JUNCTIONS FROM KNOCKDOWN EXPERIMENTS
 
 
-  # logger::log_info("Starting 'PrepareEncodeData' function ...")
-  # PrepareEncodeData(metadata = metadata,
-  #                   RBP.source.path = args$results_folder,
-  #                   results.path = args$results_folder,
-  #                   database.path = args$database_root_folder,
-  #                   gtf.version = gtf_version,
-  #                   blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
-  #                   gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
-  #                   ENCODE.silencing.series = analysis_type,
-  #                   num.cores = args$num_cores,
-  #                   replace = F)
+  logger::log_info("Starting 'PrepareEncodeData' function ...")
+  PrepareEncodeData(metadata = metadata,
+                    RBP.source.path = args$results_folder,
+                    results.path = args$results_folder,
+                    database.path = args$database_root_folder,
+                    gtf.version = gtf_version,
+                    blacklist.path = file.path(args$dependencies_folder, "hg38-blacklist.v2.bed"),
+                    gtf.path = file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+                    ENCODE.silencing.series = analysis_type,
+                    num.cores = args$num_cores,
+                    replace = F)
   
   
   
@@ -232,7 +236,7 @@ for (RBP in filtered_RBPs) {
   ## DATA BASE PREP
 
 
-  all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
+  # all_final_projects_used <- readRDS(file.path(args$results_folder, "all_final_projects_used.rds"))
 
   
   # TidyDataPriorSQL(recount3.project.IDs = all_final_projects_used,
@@ -252,26 +256,26 @@ for (RBP in filtered_RBPs) {
   #################################################
   ## DATA BASE BUILD
 
-  database_sqlite_file <- paste0(args$database_folder,  "/", main_project, ".sqlite")
-  SqlDatabaseGeneration(database.sqlite = database_sqlite_file,
-                        recount3.project.IDs = all_final_projects_used,
-                        database.folder = args$database_folder,
-                        results.folder = args$results_folder,
-                        dependencies.folder = args$dependencies_folder,
-                        gtf.path =  file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
-                        max.ent.tool.path = file.path(args$dependencies_folder, "fordownload"),
-                        bedtools.path = "/home/sg2173/rds/hpc-work/moved_from_home_dir/tools/bedtools2",
-                        hs.fasta.path = file.path(args$dependencies_folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
-                        phastcons.bw.path = file.path(args$dependencies_folder, "hg38.phastCons17way.bw"),
-                        cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
-                        mane.gtf.path = file.path(args$dependencies_folder, "MANE.GRCh38.v1.5.ensembl_genomic.gtf"),
-                        utr.introns.path = file.path(args$dependencies_folder, paste0("UTR_introns_hg38.", args$gtf_version, ".rds")),
-                        circRNA.path = file.path(args$dependencies_folder, "circRNA_circAtlas_hg38_v3.txt"),
-                        miRNA.path = file.path(args$dependencies_folder, "miRNA_mirgenedb_hg38.gff"),
-                        replace = args$replace,
-                        discard.minor.introns = FALSE,
-                        remove.all = FALSE,
-                        tmp.dir = args$tmp_folder)
+  # database_sqlite_file <- paste0(args$database_folder,  "/", main_project, ".sqlite")
+  # SqlDatabaseGeneration(database.sqlite = database_sqlite_file,
+  #                       recount3.project.IDs = all_final_projects_used,
+  #                       database.folder = args$database_folder,
+  #                       results.folder = args$results_folder,
+  #                       dependencies.folder = args$dependencies_folder,
+  #                       gtf.path =  file.path("/rds/project/rds-2Hstq49W5EY/sruiz/reference/ensembl", paste0("Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")),
+  #                       max.ent.tool.path = file.path(args$dependencies_folder, "fordownload"),
+  #                       bedtools.path = "/home/sg2173/rds/hpc-work/moved_from_home_dir/tools/bedtools2",
+  #                       hs.fasta.path = file.path(args$dependencies_folder, "Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
+  #                       phastcons.bw.path = file.path(args$dependencies_folder, "hg38.phastCons17way.bw"),
+  #                       cdts.bw.path = file.path(args$dependencies_folder, "CDTS_percentile_N7794_unrelated_all_chrs.bw"),
+  #                       mane.gtf.path = file.path(args$dependencies_folder, "MANE.GRCh38.v1.5.ensembl_genomic.gtf"),
+  #                       utr.introns.path = file.path(args$dependencies_folder, paste0("UTR_introns_hg38.", args$gtf_version, ".rds")),
+  #                       circRNA.path = file.path(args$dependencies_folder, "circRNA_circAtlas_hg38_v3.txt"),
+  #                       miRNA.path = file.path(args$dependencies_folder, "miRNA_mirgenedb_hg38.gff"),
+  #                       replace = args$replace,
+  #                       discard.minor.introns = FALSE,
+  #                       remove.all = FALSE,
+  #                       tmp.dir = args$tmp_folder)
 
   
   

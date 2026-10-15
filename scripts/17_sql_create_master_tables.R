@@ -84,7 +84,7 @@ SqlCreateMasterTables <- function(database.sqlite,
   
   SqlCreateMasterTableOther(database.sqlite,
                             database.folder,
-                            results.folder, 
+                            results.folder,
                             dependencies.folder,
                             max.ent.tool.path,
                             bedtools.path,
@@ -96,7 +96,6 @@ SqlCreateMasterTables <- function(database.sqlite,
   
   
   ## E) CREATE BRIDGE COMBO-TRANSCRIPT TABLE N:N -------------------------------
-  
   SqlCreateBridgeTablewTranscript(database.sqlite = database.sqlite,
                                   database.folder = database.folder,
                                   bridge.table.name = "bridge_other_transcript",
@@ -107,7 +106,6 @@ SqlCreateMasterTables <- function(database.sqlite,
   
   
   ## F) CREATE BRIDGE INTRON-TRANSCRIPT TABLE N:N ------------------------------
-  
   SqlCreateBridgeTablewTranscript(database.sqlite = database.sqlite,
                                   database.folder = database.folder,
                                   bridge.table.name = "bridge_intron_transcript",
@@ -1416,66 +1414,82 @@ SqlCreateBridgeTablewTranscript <- function(database.sqlite,
   
   logger::log_info("WORKING ON '",bridge.table.name,"' MASTER TABLE ... ")
   
+  
   ## Connect to the databse ----------------------------------------------
   con <- DBI::dbConnect(RSQLite::SQLite(), database.sqlite)
-  DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
   
-  
-  ## Get data from master transcript table -------------------------------
-  db_transcripts <- dbGetQuery(con, "SELECT id, transcript_id FROM 'transcript'") %>% as_tibble()
-  
-  
-  ## Get data from master origin table -----------------------------------
-  db_intron <- dbGetQuery(con, paste0("SELECT ref_junID, ref_coordinates FROM '", origin.master.table, "'")) %>% as_tibble()
-  
-  
-  origin_data <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1.rds")) %>% 
-    dplyr::select(ref_junID = junID, tx_id_junction) %>%
-    unnest(tx_id_junction )
+  if (dbExistsTable(con, bridge.table.name) && 
+      (dbGetQuery(con, paste0("SELECT count(*) from '", bridge.table.name, "'")) |> nrow() > 0)) {
+    logger::log_info("Table '", bridge.table.name, "' already exists!")
     
-
-  db_intron_w_tx <- db_intron %>% inner_join(y = origin_data, by = c("ref_coordinates"="ref_junID"))
-
-
-  ## Add the transcript ID info to set the foreign key -------------------
-  db_bridge_data_final <- db_intron_w_tx %>%
-    left_join(db_transcripts, 
-              by = c("tx_id_junction" = "transcript_id")) %>%
-    dplyr::select(any_of(c("ref_junID", "junID")), transcript_id = id) %>% 
-    tibble::rowid_to_column("id")
-  
-  
-  # if (db_bridge_data_final$ref_junID %>% unique %>% length != db_intron$ref_junID %>% unique %>% length) {
-  #   stop("Some introns are lost during the data merge with the transcript information.")
-  # }
-  # rm(db_transcripts)
-  
- 
-  ## Create bridge table -------------------------------------------------
-  
-  query <- paste0("CREATE TABLE ", bridge.table.name, "(
+  } else {
+    
+    if (dbExistsTable(con, bridge.table.name) && 
+             (dbGetQuery(con, paste0("SELECT count(*) from '", bridge.table.name, "'")) |> nrow() == 0)) {
+      DBI::dbRemoveTable(con, name = bridge.table.name)
+    }
+    
+    DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
+    
+    ## Get data from master transcript table -------------------------------
+    db_transcripts <- dbGetQuery(con, "SELECT id, transcript_id FROM 'transcript'") %>% as_tibble()
+    
+    
+    ## Get data from master origin table -----------------------------------
+    db_intron <- dbGetQuery(con, paste0("SELECT ref_junID, ref_coordinates 
+                                      FROM '", origin.master.table, "'")) %>% as_tibble()
+    
+    ## Get all paired split reads -----------------------------------
+    origin_data <- readRDS(file = file.path(database.folder, "all_split_reads_qc_level1.rds")) %>% 
+      dplyr::select(ref_junID = junID, tx_id_junction) %>%
+      unnest(tx_id_junction )
+    
+    
+    db_intron_w_tx <- db_intron %>% 
+      inner_join(y = origin_data, by = c("ref_coordinates"="ref_junID"))
+    
+    
+    ## Add the transcript ID info to set the foreign key -------------------
+    db_bridge_data_final <- db_intron_w_tx %>%
+      left_join(db_transcripts, 
+                by = c("tx_id_junction" = "transcript_id")) %>%
+      dplyr::select(any_of(c("ref_junID", "junID")), transcript_id = id) %>% 
+      tibble::rowid_to_column("id") |> 
+      filter(!is.na(transcript_id))
+    
+    # if (db_bridge_data_final$ref_junID %>% unique %>% length != db_intron$ref_junID %>% unique %>% length) {
+    #   stop("Some introns are lost during the data merge with the transcript information.")
+    # }
+    # rm(db_transcripts)
+    
+    
+    ## Create bridge table -------------------------------------------------
+    
+    query <- paste0("CREATE TABLE ", bridge.table.name, "(
     id INTEGER PRIMARY KEY,
     ref_junID INTEGER NOT NULL,
     transcript_id INTEGER NOT NULL,
     FOREIGN KEY (ref_junID) REFERENCES ", origin.master.table, "(ref_junID),
     FOREIGN KEY (transcript_id) REFERENCES transcript(id));")
-  
-  res <- DBI::dbSendQuery(conn = con, statement = query)
-  DBI::dbClearResult(res)
-  logger::log_info("Bridge '", bridge.table.name, "' table created!")
-  
-  # DBI::dbRemoveTable(con, name = bridge.table.name)
-  
-  
-  ## Populate table ------------------------------------------------------
-  
-  DBI::dbAppendTable(conn = con, 
-                     name = bridge.table.name, 
-                     value = db_bridge_data_final)
-  
-  logger::log_info("Bridge '", bridge.table.name, "' table populated! ", nrow(db_bridge_data_final), " records stored!")
-  
-  # return(db_bridge_data_final)
+    
+    res <- DBI::dbSendQuery(conn = con, statement = query)
+    DBI::dbClearResult(res)
+    logger::log_info("Bridge '", bridge.table.name, "' table created!")
+    
+    
+    # 
+    
+    ## Populate table ------------------------------------------------------
+    
+    DBI::dbAppendTable(conn = con, 
+                       name = bridge.table.name, 
+                       value = db_bridge_data_final)
+    
+    logger::log_info("Bridge '", bridge.table.name, "' table populated! ", nrow(db_bridge_data_final), " records stored!")
+    
+    # return(db_bridge_data_final)
+    
+  }
   
 }
 

@@ -19,7 +19,7 @@ suppressPackageStartupMessages({
   library(XML, lib.loc = "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library")
   library(GenomeInfoDb, lib.loc = "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library")
   library(GenomicRanges, lib.loc = "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library")
-  library(DBI, lib.loc = "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library")
+  #library(DBI, lib.loc = "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library")
   library(doParallel, lib.loc = "/usr/local/Cluster-Apps/R/4.3.1-icelake/lib64/R/library")
   library(recount3)
 })
@@ -39,6 +39,7 @@ gtf_version <- "116"
 supportive_reads <- 1
 data_subsample = F
 
+#main_project_identifier <- "SRP083135"
 main_project_identifier <- "GTEX"
 #main_project_identifier <- "TCGA"
 #main_project_identifier <- "SRP151040"
@@ -113,6 +114,7 @@ recount3_project_IDs <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",     
 #                          "LUSC","MESO","OV","PAAD","PCPG","PRAD","READ",
 #                          "SARC","SKCM","STAD","TGCT","THCA","THYM","UCEC","UCS","UVM") %>%  sort()
 
+#recount3_project_IDs <- "SRP083135"
 #recount3_project_IDs <-"SRP151040"
 #recount3_project_IDs <-"SRP100948"
 #recount3_project_IDs <-"SRP058181"
@@ -233,8 +235,8 @@ recount3_project_IDs_used <- readRDS(file = file.path(args$results_folder, "all_
 #                                     dependencies.folder = args$dependencies_folder,
 #                                     database.folder = args$database_folder,
 #                                     replace = args$replace)
-# 
-# 
+
+
 # GenerateRecount3TPM(recount3.project.IDs = c(recount3_project_IDs_used),
 #                     data.source = args$data_source,
 #                     tpm.folder = args$tpm_folder,
@@ -265,9 +267,9 @@ SqlDatabaseGeneration(database.sqlite = database_sqlite_path,
                       utr.introns.path = file.path(args$dependencies_folder, paste0("UTR_introns_hg38.", args$gtf_version, ".rds")),
                       circRNA.path = file.path(args$dependencies_folder, "circRNA_circAtlas_hg38_v3.txt"),
                       miRNA.path = file.path(args$dependencies_folder, "miRNA_mirgenedb_hg38.gff"),
-                      replace = args$replace,
+                      replace = FALSE,
                       discard.minor.introns = FALSE,
-                      remove.all = TRUE,
+                      remove.all = FALSE,
                       tmp.dir = args$tmp_folder)
 
 #}

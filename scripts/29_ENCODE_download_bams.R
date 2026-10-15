@@ -7,7 +7,10 @@
 ENCODEDownloadBams <- function(metadata,
                                results.path,
                                regtools.path,
-                               samtools.path) {
+                               samtools.path,
+                               download.cores,
+                               samtools.threads,
+                               samtools.memory) {
   
 
   ## Script parameters ----
@@ -17,9 +20,10 @@ ENCODEDownloadBams <- function(metadata,
   ### variables are loaded from disk.
   
   overwrite <- T
-  download_cores = 1
-  samtools_threads = 1
-  samtools_memory = "1G"
+  
+  # download.cores = 1
+  # samtools.threads = 1
+  # samtools.memory = "1G"
   
   
   ## Load metadata ----
@@ -54,9 +58,9 @@ ENCODEDownloadBams <- function(metadata,
     
     DownloadExtractBamFiles(RBP.metadata = RBP_metadata,
                             RBP.path = RBP_path,
-                            num.cores = download_cores,
-                            samtools.threads = samtools_threads,
-                            samtools.memory = samtools_memory,
+                            num.cores = download.cores,
+                            samtools.threads = samtools.threads,
+                            samtools.memory = samtools.memory,
                             samtools.path = samtools.path,
                             regtools.path = regtools.path,
                             overwrite = overwrite)
@@ -201,7 +205,8 @@ DownloadExtractBamFiles <- function(RBP.metadata,
   
   
   ## Only download BAM files for the samples not yet downloaded and junction extracted
-  RBPs_BAM_to_download <- CheckBAMFilesToDownload(RBP.metadata, RBP.path)
+  RBPs_BAM_to_download <- CheckBAMFilesToDownload(RBP.metadata, RBP.path) %>%
+    dplyr::distinct(sample_id, experiment_type, .keep_all = TRUE)
   
   if (nrow(RBPs_BAM_to_download) > 0) {
     
@@ -243,7 +248,9 @@ DownloadExtractBamFiles <- function(RBP.metadata,
     #invisible(lapply(metrics, function(x) if (!is.na(x[2])) logger::log_info(x[2])))
   }
   
-  RBPs_jxn_to_extract <- CheckJxnFilesToExtract(RBP.metadata, RBP.path) %>% arrange(sample_id)
+  RBPs_jxn_to_extract <- CheckJxnFilesToExtract(RBP.metadata, RBP.path) %>%
+    dplyr::distinct(sample_id, experiment_type, .keep_all = TRUE) %>%
+    arrange(sample_id)
   
   if (nrow(RBPs_jxn_to_extract) > 0) {
     
