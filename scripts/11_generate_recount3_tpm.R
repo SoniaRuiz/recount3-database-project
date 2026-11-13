@@ -1,13 +1,13 @@
-library(tidyverse)
-library(SummarizedExperiment)
-library(data.table)
-library(GenomicRanges)
-library(DBI)
-library(dplyr)
-library(here)
-library(doParallel)
-library(tidyverse)
-library(protr)
+# library(tidyverse)
+# library(SummarizedExperiment)
+# library(data.table)
+# library(GenomicRanges)
+# library(DBI)
+# library(dplyr)
+# library(here)
+# library(doParallel)
+# library(tidyverse)
+# library(protr)
 
 #' Title
 #' Obtains the raw counts data from recount3 for a given projectID. 

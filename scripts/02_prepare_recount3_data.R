@@ -351,6 +351,7 @@ PrepareRecount3Data <- function(recount3.project.IDs,
         logger::log_info(paste0(project_id, " does not have any sample that meet the minimum criteria for inclusion."))
       }
       
+      
       rm(metadata_tidy_filter)
       rm(metadata.info)
       rm(metadata_tidy)

@@ -133,7 +133,8 @@ SeparateClusters <- function(recount3.project.IDs,
       project_metadata_tidy <- project_metadata_tidy %>%
         #separate_rows(sra.experiment_title, sep = "\\:\\s*") %>%
         separate(sra.experiment_title, into = c('col1', 'organism', 'library'), sep = ";") %>% 
-        separate(col1, into = c('GSM', 'cluster'), sep = ":") 
+        dplyr::rename(cluster = source_name) |>
+        separate(col1, into = c('GSM', 'source'), sep = ":") 
     }
     
     

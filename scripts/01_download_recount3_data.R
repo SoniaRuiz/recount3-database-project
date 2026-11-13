@@ -7,7 +7,6 @@
 #' For instance, GTEx is stored in recount3 in multiple independent projects ID (e.g. BRAIN, SKIN, BLOOD, etc), 
 #' but all of them belong to GTEx. Hence, it is useulf to have a folder named "project.name" that will contain
 #' multiple subfolders named as the elements contained within the object 'recount3.project.IDs'
-#' @param gtf.version Ensembl version, e.g. "105"
 #' @param data.source source of the data within recount3. It can be:
 #' - "data_sources/sra"  
 #' - "data_sources/gtex" 
@@ -19,7 +18,6 @@
 #' @examples
 DownloadRecount3Data <- function (recount3.project.IDs,
                                   project.name,
-                                  gtf.version,
                                   blacklist.path,
                                   gtf.path,
                                   data.source,
@@ -29,9 +27,9 @@ DownloadRecount3Data <- function (recount3.project.IDs,
                                   replace) {
   
   if (replace || !file.exists(file.path(database.folder, "all_split_reads_qc_level1.rds"))) {
-
+    
     ## Load all split reads across all sample clusters and split them by cluster
-
+    
     if (file.exists(file.path(dirname(database.folder), "all_split_reads_raw.rds"))) {
       
       logger::log_info("Project '", project.name, "' --> Loading 'all_split_reads_raw.rds' file...")
@@ -92,7 +90,7 @@ DownloadRecount3Data <- function (recount3.project.IDs,
                                       annotated = feature_info$annotated,
                                       left_motif = feature_info$left_motif,
                                       right_motif = feature_info$right_motif) %>% as_tibble()
-
+        
         
         logger::log_info(project_id, " --> ", all_split_reads %>% nrow(), " split reads.")
         
@@ -179,13 +177,13 @@ DownloadRecount3Data <- function (recount3.project.IDs,
     logger::log_info("Annotating dasper...")
     
     ## Annotate Dasper
-    edb <- LoadEdb(gtf.path)
+    ref <- LoadUraReference(gtf.path)
     seqlevelsStyle(all_split_reads_raw_tidy_gr) <- "Ensembl"
-    all_split_reads_details_w_symbol <- AnnotateDasper(GRdata = all_split_reads_raw_tidy_gr, edb) %>% tibble::as_tibble()
+    all_split_reads_details_w_symbol <- AnnotateDasper(GRdata = all_split_reads_raw_tidy_gr, ref) %>% tibble::as_tibble()
     logger::log_info("Split reads annotation finished!")
     
     rm(all_split_reads_raw_tidy_gr)
-    rm(edb)
+    rm(ref)
     
     ################################################################################
     ## 5. Discard all junctions that are not annotated, novel donor or novel acceptor
@@ -198,13 +196,13 @@ DownloadRecount3Data <- function (recount3.project.IDs,
     # logger::log_info( all_split_reads_details_w_symbol %>% length(), " annotated, novel donor, novel acceptor and novel combo junctions.")
     
     print(all_split_reads_details_w_symbol %>% head())
-
+    
     all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>% 
       dplyr::select(any_of(c("junID", "seqnames", "start", "end", "width", "strand", "gene_name_junction",
-                            "gene_id_junction", "in_ref", "type", "tx_id_junction",
-                            "annotated", "left_motif", "right_motif", "n_projects"))) %>% 
+                             "gene_id_junction", "in_ref", "type", "tx_id_junction",
+                             "annotated", "left_motif", "right_motif", "n_projects"))) %>% 
       dplyr::rename(gene_name = gene_name_junction, gene_id = gene_id_junction)
-
+    
     ############################################################################
     ## 6. Discard all ambiguous split reads (i.e. assigned to multiple genes)
     ############################################################################

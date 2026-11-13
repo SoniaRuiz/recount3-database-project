@@ -5,21 +5,21 @@
 
 # options(width=150)
 
-library(DBI)
-library(RSQLite)
-library(dplyr)
-library(tidyverse)
-
-
-database_path <- "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/introverse_v2/database/"
-out_dir <- file.path(database_path, "bed")
-
-dir.create(path = out_dir, recursive = T, showWarnings = F)
-gtf_version <- 115
-
 run = FALSE
 
 if (run) {
+  
+  library(DBI)
+  library(RSQLite)
+  library(dplyr)
+  library(tidyverse)
+  
+  
+  database_path <- "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/introverse_v2/database/"
+  out_dir <- file.path(database_path, "bed")
+  
+  dir.create(path = out_dir, recursive = T, showWarnings = F)
+  gtf_version <- 115
   
   # options(width = 150)
    

@@ -1,5 +1,3 @@
-library(rtracklayer)
-
 #' Title
 #' Calculates the CDTS and PhastCons20 mean scores of the sequences overlapping the /+35bp sequence at the donor site of the intron 
 #' (i.e. / = the exon-intron junction), and the /+35bp sequence at the acceptor splice 
@@ -31,12 +29,12 @@ GenerateCdtsPhastconsScores <- function(dependencies.folder,
   if (!file.exists(phastcons.bw.path)) {
     stop("Conservation file '", phastcons.bw.path, "' does not exist!") %>% logger::log_info()
   } else {
-    BigWigFilePhastCons <- BigWigFile(phastcons.bw.path)
+    BigWigFilePhastCons <- rtracklayer::BigWigFile(phastcons.bw.path)
   }
   if (!file.exists(cdts.bw.path)) {
     stop("Constraint file '", cdts.bw.path, "' does not exist!") %>% logger::log_info()
   } else {
-    BigWigFileCDTS <- BigWigFile(cdts.bw.path)
+    BigWigFileCDTS <- rtracklayer::BigWigFile(cdts.bw.path)
   }
   
   

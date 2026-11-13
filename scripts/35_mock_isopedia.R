@@ -23,16 +23,19 @@
 # that span-collapsing behaviour.
 # =================================================================
 
-library(dplyr)
-library(tidyr)
-library(tibble)
-library(DBI)
-library(RSQLite)
+
 
 
 run = FALSE
 
 if (run) {
+  
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+  library(DBI)
+  library(RSQLite)
+  
   ## ---- 1. Isoform definitions -----------------------------------------------
   ## One row per isoform: its "first intron" (the variable alternative
   ## splice-site choice) plus the label matching the real event it represents.

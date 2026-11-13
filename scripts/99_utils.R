@@ -27,7 +27,7 @@ RemoveEncodeBlacklistRegions <- function(GRdata, blacklist.path) {
   
   if (file.exists(blacklist.path)) {
     encode_blacklist_hg38 <- rtracklayer::import(con = blacklist.path) 
-    } else {
+  } else {
     stop(blacklist.path, " does not exist!")
   }
   
@@ -49,41 +49,256 @@ RemoveEncodeBlacklistRegions <- function(GRdata, blacklist.path) {
   return(GRdata)
 }
 
-#' Loads the reference genome into memory
+#' Collapse gene IDs that belong to the same isomatch gene group
 #'
-#' The different versions can be downloaded
-#' \href{http://ftp.ensembl.org/pub/release-105/gtf/homo_sapiens/}{here}.
+#' The URA GTF carries, per transcript, the gene_id of the source record that was selected for it
+#' (Ensembl > GENCODE > RefSeq > CHESS). Inside one isomatch gene group (ISOM_GENE) transcripts can
+#' therefore carry gene_ids from different sources, e.g. an Ensembl gene and a CHESS-only gene at the
+#' same locus. A junction at that locus would then be annotated to two genes and treated as ambiguous.
 #'
-#' @param gtf.path Path to the reference genome GTF file.
+#' Rule: a gene is mapped to the gene of the highest-priority source in its group, but only if that
+#' gene is unique. If the group has several top-priority genes (real overlapping genes), or the gene is
+#' itself top-priority in any of its groups, the gene is kept as it is.
 #'
-#' @return Connection to the reference genome DB.
+#' @param tx Tibble with one row per URA transcript: gene_id, ISOM_GENE, rank (1 = highest priority).
+#'
+#' @return Named character vector: original gene_id -> collapsed gene_id.
 #' @export
-LoadEdb <- function(gtf.path) {
-  if (!exists("edb")) {
-    logger::log_info("Loading the reference genome.")
-    edb <<- ensembldb::ensDbFromGtf(gtf.path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-    edb <<- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  } else {
-    logger::log_info("Variable 'edb' already loaded!")
+CollapseGeneIds <- function(tx) {
+  
+  gene_rank <- tx %>%
+    dplyr::group_by(gene_id) %>%
+    dplyr::summarise(gene_rank = min(rank), .groups = "drop")
+  
+  group_genes <- tx %>%
+    dplyr::distinct(gene_id, ISOM_GENE) %>%
+    dplyr::left_join(gene_rank, by = "gene_id") %>%
+    dplyr::group_by(ISOM_GENE) %>%
+    dplyr::mutate(best_rank = min(gene_rank),
+                  n_best = sum(gene_rank == best_rank),
+                  best_gene = gene_id[gene_rank == best_rank][1],
+                  is_best = gene_rank == best_rank) %>%
+    dplyr::ungroup()
+  
+  per_gene <- group_genes %>%
+    dplyr::mutate(blocked = is_best | n_best > 1,
+                  target = ifelse(!is_best & n_best == 1, best_gene, NA_character_)) %>%
+    dplyr::group_by(gene_id) %>%
+    dplyr::summarise(blocked = any(blocked),
+                     targets = list(unique(stats::na.omit(target))),
+                     .groups = "drop")
+  
+  gene_map <- stats::setNames(per_gene$gene_id, per_gene$gene_id)
+  to_collapse <- !per_gene$blocked & lengths(per_gene$targets) == 1
+  gene_map[per_gene$gene_id[to_collapse]] <- unlist(per_gene$targets[to_collapse])
+  
+  ## a target can itself be collapsed through another group: follow the chain (rank strictly decreases)
+  for (i in seq_len(4)) {
+    gene_map <- stats::setNames(unname(gene_map[gene_map]), names(gene_map))
   }
-  return(edb)
+  
+  return(gene_map)
+}
+
+
+#' Components of an undirected graph given as an edge list
+#' @keywords internal
+.ComponentsFromEdges <- function(nodes, from, to) {
+  parent <- seq_along(nodes)
+  a <- match(from, nodes)
+  b <- match(to, nodes)
+  find <- function(x) {
+    while (parent[x] != x) {
+      parent[x] <<- parent[parent[x]]
+      x <- parent[x]
+    }
+    x
+  }
+  for (i in seq_along(a)) {
+    ra <- find(a[i]); rb <- find(b[i])
+    if (ra != rb) parent[rb] <- ra
+  }
+  vapply(seq_along(nodes), find, integer(1))
+}
+
+
+#' Merge gene IDs that are the same gene annotated by different sources
+#'
+#' Second stage after CollapseGeneIds(). Two (collapsed) genes are merged when
+#' (1) they are annotated for the same multi-exon merged transcript (ISOM_SRC lists the records of
+#'     every source that has the identical intron chain, so their gene IDs are the same gene), or
+#' (2) they have the same gene_name, are on the same chromosome and strand and their extents overlap.
+#'     Overlap is required because many small RNA genes share a name (Y_RNA, U6, ...) across unrelated loci.
+#' Every merged group is mapped to the gene of the highest-priority source (ties: gene_id order).
+#'
+#' @param tx Tibble with one row per URA transcript: gene_id, gene_name, seqnames, start, end, strand,
+#' rank (1 = highest priority), ISOM_SRC, ISOM_EXONS.
+#' @param gene_map Named vector from CollapseGeneIds(): gene_id -> collapsed gene_id.
+#'
+#' @return Named character vector: original gene_id -> merged gene_id.
+#' @export
+MergeEquivalentGenes <- function(tx, gene_map) {
+  
+  ## Node table: one row per collapsed gene
+  nodes <- tx %>%
+    dplyr::mutate(node = unname(gene_map[gene_id])) %>%
+    dplyr::group_by(node) %>%
+    dplyr::summarise(rank = min(rank),
+                     seqnames = dplyr::first(seqnames), strand = dplyr::first(strand),
+                     start = min(start), end = max(end),
+                     gene_name = dplyr::first(gene_name[gene_id == node]),
+                     .groups = "drop")
+  
+  ## 1. Cross-references: genes of the different records of one multi-exon merged transcript
+  records <- tx %>%
+    dplyr::filter(as.integer(ISOM_EXONS) > 1, grepl("|", ISOM_SRC, fixed = TRUE)) %>%
+    dplyr::select(transcript_id, ISOM_SRC) %>%
+    tidyr::separate_rows(ISOM_SRC, sep = "\\|") %>%
+    tidyr::separate(ISOM_SRC, into = c("sample", "tx", "gene"), sep = ":", extra = "drop", fill = "right") %>%
+    dplyr::mutate(gene = ifelse(sample == "S3", sub("\\.[0-9]+", "", gene), gene),
+                  node = unname(gene_map[gene])) %>%
+    dplyr::filter(!is.na(node))
+  
+  edges_xref <- records %>%
+    dplyr::distinct(transcript_id, node) %>%
+    dplyr::group_by(transcript_id) %>%
+    dplyr::filter(dplyr::n() > 1) %>%
+    dplyr::mutate(anchor = dplyr::first(node)) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(node != anchor) %>%
+    dplyr::distinct(from = anchor, to = node)
+  
+  ## 2. Same symbol, same chromosome and strand, overlapping extents
+  edges_symbol <- nodes %>%
+    dplyr::filter(!is.na(gene_name), strand %in% c("+", "-")) %>%
+    dplyr::group_by(gene_name, seqnames, strand) %>%
+    dplyr::filter(dplyr::n() > 1) %>%
+    dplyr::arrange(start, .by_group = TRUE) %>%
+    dplyr::mutate(running_end = dplyr::lag(cummax(end)),
+                  new_cluster = is.na(running_end) | start > running_end,
+                  cluster = cumsum(new_cluster)) %>%
+    dplyr::group_by(gene_name, seqnames, strand, cluster) %>%
+    dplyr::filter(dplyr::n() > 1) %>%
+    dplyr::mutate(anchor = dplyr::first(node)) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(node != anchor) %>%
+    dplyr::distinct(from = anchor, to = node)
+  
+  edges <- dplyr::bind_rows(edges_xref, edges_symbol)
+  nodes$component <- .ComponentsFromEdges(nodes$node, edges$from, edges$to)
+  
+  ## Representative of each component: highest-priority source, then gene_id
+  reps <- nodes %>%
+    dplyr::group_by(component) %>%
+    dplyr::arrange(rank, node, .by_group = TRUE) %>%
+    dplyr::mutate(representative = dplyr::first(node), size = dplyr::n()) %>%
+    dplyr::ungroup()
+  
+  node_map <- stats::setNames(reps$representative, reps$node)
+  merged_map <- stats::setNames(unname(node_map[gene_map]), names(gene_map))
+  
+  largest <- reps %>% dplyr::distinct(representative, size) %>% dplyr::arrange(dplyr::desc(size)) %>% utils::head(5)
+  logger::log_info(sum(reps$node != reps$representative), " further gene IDs merged (",
+                   nrow(edges_xref), " cross-reference links, ", nrow(edges_symbol), " same-symbol links). ",
+                   "Largest merged groups: ", paste0(largest$representative, " (", largest$size, ")", collapse = ", "))
+  
+  return(merged_map)
+}
+
+
+#' Loads the URA reference annotation into memory
+#'
+#' Builds a TxDb from the enriched URA GTF (script.sh + build_biotype_lookup.sh), with the gene_id of
+#' every transcript collapsed by CollapseGeneIds(), and a table with one row per gene.
+#'
+#' @param gtf.path Path to the enriched URA GTF.
+#' @param merge.equivalent.genes If TRUE (default), genes that are the same gene annotated by different sources
+#' are merged (see MergeEquivalentGenes()) after the isomatch-group collapse.
+#'
+#' @return List with `txdb` (TxDb used by dasper, collapsed gene IDs, Ensembl-style seqlevels),
+#' `genes` (tibble: gene_id, gene_name, gene_biotype, rank; uncollapsed IDs, i.e. the gene table) and
+#' `gene_map` (named vector: gene_id -> collapsed gene_id).
+#' The result is cached in the global variable `ura_reference` and reloaded automatically if the cached
+#' TxDb connection is no longer valid or `merge.equivalent.genes` changed; rm(ura_reference) forces a reload.
+#' @export
+LoadUraReference <- function(gtf.path, merge.equivalent.genes = TRUE) {
+  ## A TxDb keeps an SQLite connection that is dead after a workspace restore: reuse the cached
+  ## reference only if its connection is valid and it was built with the same merge setting.
+  cached_ok <- exists("ura_reference", envir = .GlobalEnv) &&
+    isTRUE(tryCatch(DBI::dbIsValid(AnnotationDbi::dbconn(get("ura_reference", envir = .GlobalEnv)$txdb)),
+                    error = function(e) FALSE)) &&
+    identical(get("ura_reference", envir = .GlobalEnv)$merge.equivalent.genes, merge.equivalent.genes)
+  
+  if (!cached_ok) {
+    logger::log_info("Loading the reference annotation.")
+    
+    gr <- rtracklayer::import(gtf.path, format = "gtf",
+                              feature.type = c("transcript", "exon"),
+                              colnames = c("type", "gene_id", "transcript_id", "gene_name",
+                                           "gene_biotype", "ISOM_GENE", "ISOM_ID_SRC", "ISOM_SRC", "ISOM_EXONS"))
+    
+    source_rank <- c(S2 = 1L, S3 = 2L, S4 = 3L, S1 = 4L)
+    tx <- gr[gr$type == "transcript"] %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(seqnames = as.character(seqnames), strand = as.character(strand))
+    stopifnot("The GTF has no ISOM_GENE / ISOM_ID_SRC attributes: was it produced by the current script.sh?" =
+                all(c("ISOM_GENE", "ISOM_ID_SRC") %in% colnames(tx)),
+              "Unknown ISOM_ID_SRC value" = all(tx$ISOM_ID_SRC %in% names(source_rank)))
+    tx$rank <- unname(source_rank[tx$ISOM_ID_SRC])
+    
+    genes <- tx %>%
+      dplyr::group_by(gene_id) %>%
+      dplyr::summarise(gene_name = dplyr::first(gene_name),
+                       gene_biotype = dplyr::first(gene_biotype),
+                       rank = min(rank), .groups = "drop")
+    
+    ## collapse gene IDs inside the reference seen by dasper
+    gene_map <- CollapseGeneIds(tx)
+    logger::log_info(sum(gene_map != names(gene_map)), " of ", length(gene_map),
+                     " gene IDs collapsed into a higher-priority gene of the same isomatch group.")
+    if (merge.equivalent.genes) {
+      gene_map <- MergeEquivalentGenes(tx, gene_map)
+    }
+    gr$gene_id <- unname(gene_map[gr$gene_id])
+    stopifnot("gene_id missing from the collapse map" = !anyNA(gr$gene_id))
+    
+    ## the rest of the pipeline uses Ensembl-style chromosome names (1, 2, ..., X, Y, MT)
+    GenomeInfoDb::seqlevelsStyle(gr) <- "Ensembl"
+    txdb <- suppressWarnings(GenomicFeatures::makeTxDbFromGRanges(gr))
+    
+    ura_reference <<- list(txdb = txdb, genes = genes, gene_map = gene_map,
+                           merge.equivalent.genes = merge.equivalent.genes)
+  } else {
+    logger::log_info("Variable 'ura_reference' already loaded!")
+  }
+  return(ura_reference)
 }
 
 
 #' Annotate and categorize every junction
 #'
 #' @param GRdata GRanges class object with the relevant junctions.
-#' @param edb The connection to the reference genome DB.
+#' @param ref The reference returned by LoadUraReference().
 #'
-#' @return Annotated input by dasper.
-#' @export 
-AnnotateDasper <- function(GRdata, edb) {
+#' @return Annotated input by dasper, with the same columns as before:
+#' gene_id_junction, gene_name_junction and tx_id_junction (transcript_id, version included).
+#' @export
+AnnotateDasper <- function(GRdata, ref) {
   logger::log_info("Annotating using dasper::junction_annot().")
   GRdata <- dasper::junction_annot(GRdata,
-                                   ref = edb,
-                                   ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"),
-                                   ref_cols_to_merge = c("gene_id", "gene_name", "tx_id")
+                                   ref = ref$txdb,
+                                   ref_cols = c("gene_id", "tx_name"),
+                                   ref_cols_to_merge = c("gene_id", "tx_name")
   )
+  
+  ## downstream code expects tx_id_junction (a TxDb has no EnsDb-style tx_id)
+  S4Vectors::mcols(GRdata)$tx_id_junction <- S4Vectors::mcols(GRdata)$tx_name_junction
+  S4Vectors::mcols(GRdata)$tx_name_junction <- NULL
+  
+  ## gene names are not part of a TxDb: add them from the URA gene table
+  gene_names <- stats::setNames(ref$genes$gene_name, ref$genes$gene_id)
+  gene_name_junction <- lapply(GRdata$gene_id_junction, function(g) unname(gene_names[g]))
+  S4Vectors::mcols(GRdata)$gene_name_junction <- IRanges::CharacterList(gene_name_junction)
   
   return(GRdata)
 }
@@ -98,7 +313,7 @@ AnnotateDasper <- function(GRdata, edb) {
 RemoveUncategorizedJunctions <- function(input.SR.details) {
   
   logger::log_info("Removing split reads not classified as 'annotated', 'novel_donor', 'novel_acceptor', 'novel combo' or 'novel exon skip' ...")
-
+  
   ## Subset columns
   input.SR.details <- input.SR.details %>% 
     dplyr::select(any_of(c("junID", "seqnames", "start", "end", "width", "strand",
@@ -124,7 +339,7 @@ RemoveUncategorizedJunctions <- function(input.SR.details) {
 RemoveAmbiguousJunctions <- function(input.SR.details, database.folder) {
   
   logger::log_info("Removing junctions associated to more than one gene...")
-
+  
   input.SR.details <- input.SR.details %>%
     as_tibble() %>%
     distinct(junID, .keep_all = T) %>% 
@@ -386,4 +601,159 @@ ExtractUTRintronsFromReference <- function(gtf.path, utr.introns.path) {
     saveRDS(., file.path(utr.introns.path))
   
   gtf_hg38_utr_introns_gr %>% return()
+}
+
+
+#' Introns lying between two segments of the same UTR of a transcript
+#'
+#' @param segments Tibble with seqnames, strand, transcript_id, utr_type, seg_start, seg_end:
+#' the UTR segments of each transcript (one per exon that has a UTR part).
+#' @return Tibble with seqnames, start, end, strand, utr_type, transcript_id (intron coordinates).
+#' @keywords internal
+.UtrIntronsFromSegments <- function(segments) {
+  segments %>%
+    dplyr::group_by(transcript_id, utr_type) %>%
+    dplyr::arrange(seg_start, .by_group = TRUE) %>%
+    dplyr::mutate(next_start = dplyr::lead(seg_start)) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(!is.na(next_start)) %>%
+    dplyr::transmute(seqnames, start = seg_end + 1L, end = next_start - 1L, strand, utr_type, transcript_id)
+}
+
+
+#' UTR segments of every coding transcript, derived from its exons and CDS
+#'
+#' 5' UTR = the part of the exons upstream of the first coding base (in transcription direction),
+#' 3' UTR = the part downstream of the last coding base. The coding region is the CDS plus the stop codon
+#' (Ensembl, GENCODE and RefSeq annotate it separately from the CDS; CHESS has no stop_codon features).
+#'
+#' @param exons,cds Tibbles with seqnames, start, end, strand, transcript_id (cds: CDS and stop_codon features).
+#' @keywords internal
+.UtrSegmentsFromExonsCds <- function(exons, cds) {
+  cds_range <- cds %>%
+    dplyr::group_by(transcript_id) %>%
+    dplyr::summarise(cds_min = min(start), cds_max = max(end), .groups = "drop")
+  
+  seg <- exons %>%
+    dplyr::filter(strand %in% c("+", "-")) %>%
+    dplyr::inner_join(cds_range, by = "transcript_id")
+  
+  lower <- seg %>%
+    dplyr::filter(start < cds_min) %>%
+    dplyr::mutate(seg_start = start,
+                  seg_end = pmin(end, cds_min - 1L),
+                  utr_type = ifelse(strand == "+", "five_prime_utr", "three_prime_utr"))
+  upper <- seg %>%
+    dplyr::filter(end > cds_max) %>%
+    dplyr::mutate(seg_start = pmax(start, cds_max + 1L),
+                  seg_end = end,
+                  utr_type = ifelse(strand == "+", "three_prime_utr", "five_prime_utr"))
+  
+  dplyr::bind_rows(lower, upper) %>%
+    dplyr::select(seqnames, strand, transcript_id, utr_type, seg_start, seg_end)
+}
+
+
+#' Rename RefSeq chromosome accessions (NC_0000NN.x, NC_012920.x) to Ensembl-style names and drop the rest
+#' @keywords internal
+.RefseqToEnsemblSeqlevels <- function(gr) {
+  lv <- GenomeInfoDb::seqlevels(gr)
+  num <- sub("^NC_0000(\\d{2})\\.\\d+$", "\\1", lv)
+  is_nc <- grepl("^NC_0000\\d{2}\\.\\d+$", lv)
+  new <- rep(NA_character_, length(lv))
+  new[is_nc] <- ifelse(num[is_nc] == "23", "X", ifelse(num[is_nc] == "24", "Y", as.character(as.integer(num[is_nc]))))
+  new[grepl("^NC_012920\\.\\d+$", lv)] <- "MT"
+  keep <- !is.na(new)
+  gr <- GenomeInfoDb::keepSeqlevels(gr, lv[keep], pruning.mode = "coarse")
+  GenomeInfoDb::renameSeqlevels(gr, stats::setNames(new[keep], lv[keep]))
+}
+
+
+#' Build the list of UTR introns from the four source annotations
+#'
+#' The URA GTF has no UTR/CDS information, so the UTR introns are built from the source annotations
+#' (CHESS, Ensembl, GENCODE, RefSeq). For every source, UTRs are derived in the same way from the exons,
+#' CDS and stop codon of each coding transcript, and the introns lying between two segments of the same UTR are kept.
+#' The introns of the four sources are pooled (identical coordinates, strand and UTR type are listed once).
+#' For Ensembl, the derivation is checked against its explicit five_prime_utr / three_prime_utr features.
+#'
+#' @param gtf.paths Named character vector with the paths of the source GTFs: chess, ensembl, gencode, refseq.
+#' @param utr.introns.path Where to save the resulting GRanges (RDS), e.g. UTR_introns_hg38.URA.rds.
+#'
+#' @return GRanges of UTR introns (Ensembl-style seqlevels) with metadata columns utr_type
+#' (five_prime_utr, three_prime_utr or both) and sources.
+#' @export
+# BuildUtrIntronsFromSources(
+#   gtf.paths = c(chess = "/home/sg2173/rds/rds-rytenlab-2Hstq49W5EY/sruiz/reference/chess3/chess3.1.3.GRCh38.gtf",
+#               ensembl = "/home/sg2173/rds/rds-rytenlab-2Hstq49W5EY/sruiz/reference/ensembl/Homo_sapiens.GRCh38.116.chr.gtf",
+#               gencode = "/home/sg2173/rds/rds-rytenlab-2Hstq49W5EY/sruiz/reference/gencode/gencode.v49.annotation.gtf.gz",
+#               refseq = "/home/sg2173/rds/rds-rytenlab-2Hstq49W5EY/sruiz/reference/refseq/GCF_000001405.40_GRCh38.p14_genomic.gtf.gz"),
+#               utr.introns.path = file.path(args$dependencies_folder, "UTR_introns_hg38.URA.rds"))
+BuildUtrIntronsFromSources <- function(gtf.paths, utr.introns.path) {
+  
+  stopifnot("gtf.paths must be a named vector: chess, ensembl, gencode, refseq" =
+              setequal(names(gtf.paths), c("chess", "ensembl", "gencode", "refseq")))
+  
+  per_source <- lapply(c("chess", "ensembl", "gencode", "refseq"), function(src) {
+    
+    logger::log_info("Reading ", src, " exons and CDS ...")
+    feature_types <- c("exon", "CDS", "stop_codon")
+    if (src == "ensembl") feature_types <- c(feature_types, "five_prime_utr", "three_prime_utr")
+    
+    gr <- rtracklayer::import(gtf.paths[[src]], format = "gtf", feature.type = feature_types,
+                              colnames = c("type", "transcript_id"))
+    
+    if (src == "refseq") {
+      gr <- .RefseqToEnsemblSeqlevels(gr)
+    } else {
+      gr <- GenomeInfoDb::keepStandardChromosomes(gr, pruning.mode = "coarse")
+      GenomeInfoDb::seqlevelsStyle(gr) <- "Ensembl"
+    }
+    
+    tb <- gr %>% tibble::as_tibble() %>%
+      dplyr::mutate(seqnames = as.character(seqnames), strand = as.character(strand),
+                    start = as.integer(start), end = as.integer(end))
+    rm(gr)
+    
+    segments <- .UtrSegmentsFromExonsCds(exons = tb %>% dplyr::filter(type == "exon"),
+                                         cds = tb %>% dplyr::filter(type %in% c("CDS", "stop_codon")))
+    introns <- .UtrIntronsFromSegments(segments) %>% dplyr::mutate(source = src)
+    logger::log_info(src, ": ", nrow(introns), " UTR introns derived from exons and CDS (",
+                     dplyr::n_distinct(introns$transcript_id), " coding transcripts with UTR introns).")
+    
+    ## Ensembl: compare with its explicit UTR features
+    if (src == "ensembl") {
+      explicit_segments <- tb %>%
+        dplyr::filter(type %in% c("five_prime_utr", "three_prime_utr")) %>%
+        dplyr::transmute(seqnames, strand, transcript_id, utr_type = type, seg_start = start, seg_end = end)
+      explicit <- .UtrIntronsFromSegments(explicit_segments)
+      key <- function(x) paste(x$seqnames, x$start, x$end, x$strand, x$utr_type)
+      k_derived <- unique(key(introns)); k_explicit <- unique(key(explicit))
+      logger::log_info("Ensembl check: ", length(k_explicit), " UTR introns from its UTR features, ",
+                       length(k_derived), " derived from exons/CDS, ", length(intersect(k_explicit, k_derived)),
+                       " in both (", length(setdiff(k_explicit, k_derived)), " only in the UTR features, ",
+                       length(setdiff(k_derived, k_explicit)), " only derived).")
+    }
+    
+    gc()
+    introns %>% dplyr::select(seqnames, start, end, strand, utr_type, source)
+  })
+  
+  utr_introns <- dplyr::bind_rows(per_source) %>%
+    dplyr::group_by(seqnames, start, end, strand) %>%
+    dplyr::summarise(n_types = dplyr::n_distinct(utr_type),
+                     first_type = dplyr::first(utr_type),
+                     sources = paste(sort(unique(source)), collapse = ","),
+                     .groups = "drop") %>%
+    dplyr::mutate(utr_type = ifelse(n_types > 1, "both", first_type)) %>%
+    dplyr::select(seqnames, start, end, strand, utr_type, sources)
+  
+  logger::log_info(nrow(utr_introns), " distinct UTR introns; ", sum(utr_introns$utr_type == "both"),
+                   " are labelled 'both' (5' UTR in some transcripts and 3' UTR in others).")
+  
+  utr_introns_gr <- GenomicRanges::makeGRangesFromDataFrame(utr_introns, keep.extra.columns = TRUE)
+  saveRDS(utr_introns_gr, utr.introns.path)
+  logger::log_info("UTR introns saved in ", utr.introns.path)
+  
+  return(utr_introns_gr)
 }

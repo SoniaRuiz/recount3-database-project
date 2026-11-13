@@ -10,14 +10,17 @@
 ## These are expected to be resolved downstream by ORFannotate.
 ## ------------------------------------------------------------------------------
 
-library(DBI)
-library(RSQLite)
-library(dplyr)
-library(tibble)
+
 
 run = FALSE
 
 if (run) {
+  
+  library(DBI)
+  library(RSQLite)
+  library(dplyr)
+  library(tibble)
+  
   # ---- CONFIG -------------------------------------------------------------------
   
   ## Update this path if your local Isopedia database lives elsewhere

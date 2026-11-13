@@ -19,6 +19,7 @@ suppressPackageStartupMessages({
   library(foreach)
   library(doParallel)
   library(Biostrings)
+  library(biomaRt)
   library(protr)
   library(optparse)
   library(doSNOW)
@@ -33,7 +34,7 @@ suppressPackageStartupMessages({
 #####################################
 
 ## This is the Ensembl gtf transcriptome version 
-gtf_version <- c(116)
+gtf_version <- "URA"#c(116)
 
 ## This is the name of the project producing the database
 min_supporting_reads <- 1
@@ -45,7 +46,7 @@ base_folder <- "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/
 
 args <-
   list(
-    replace = TRUE,
+    replace = FALSE,
     num_cores = 74,
     base_folder = "/rds/user/sg2173/hpc-work/moved_from_home_dir/PROJECTS/srRNAseq/recount3-database-project/",
     dependencies_folder = file.path(base_folder, "dependencies"),

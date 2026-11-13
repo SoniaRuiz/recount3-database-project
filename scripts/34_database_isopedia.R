@@ -5,18 +5,20 @@
 
 # options(width=150)
 
-library(readr)
-library(dplyr)
-library(stringr)
-library(DBI)
-library(RSQLite)
-library(tidyr)
-library(data.table)
+
 
 
 run = FALSE
 
 if (run) {
+  
+  library(readr)
+  library(dplyr)
+  library(stringr)
+  library(DBI)
+  library(RSQLite)
+  library(tidyr)
+  library(data.table)
   
   #options(width = 200)
   
